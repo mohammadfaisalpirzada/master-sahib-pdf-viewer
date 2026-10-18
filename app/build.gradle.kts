@@ -66,7 +66,8 @@ dependencies {
     implementation("com.google.android.gms:play-services-mlkit-document-scanner:16.0.0-beta1")
 
     // --- Reader engine: Pdfium-backed view (zoom, night mode, page slider) ---
-    implementation("com.github.barteksc:AndroidPdfViewer:3.2.0-beta.1")
+    // Maintained fork of barteksc; same `com.github.barteksc.pdfviewer` package, resolvable on JitPack.
+    implementation("com.github.mhiew:android-pdf-viewer:3.2.0-beta.3")
 
     // --- Text extraction for search (Apache 2.0) ---
     implementation("com.tom-roush:pdfbox-android:2.0.27.0")
