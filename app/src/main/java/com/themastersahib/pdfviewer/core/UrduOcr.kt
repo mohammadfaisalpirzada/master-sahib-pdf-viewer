@@ -18,7 +18,7 @@ import java.io.File
  */
 object UrduOcr {
 
-    /** Copy any bundled assets/tessdata/* into filesDir/tessdata and return the PARENT dir. */
+    /** Copy any bundled tessdata files into filesDir/tessdata and return the PARENT dir. */
     private fun ensureData(context: Context): File {
         val dir = File(context.filesDir, "tessdata").apply { mkdirs() }
         runCatching {
