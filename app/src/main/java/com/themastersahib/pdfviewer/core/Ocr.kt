@@ -13,7 +13,7 @@ import kotlinx.coroutines.suspendCancellableCoroutine
  * Roman Urdu). Free, no network.
  */
 object Ocr {
-    private val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_CLIENT)
+    private val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
 
     /** Recognize text in a single bitmap. */
     suspend fun recognize(bitmap: Bitmap): String = suspendCancellableCoroutine { cont ->
