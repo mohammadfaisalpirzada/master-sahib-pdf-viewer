@@ -1,0 +1,75 @@
+package com.themastersahib.pdfviewer.core
+
+import android.content.ContentValues
+import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.net.Uri
+import android.os.Build
+import android.os.Environment
+import android.provider.MediaStore
+import java.io.File
+
+/** Decode a content/file Uri (e.g. a scanned page) into a Bitmap. */
+object BitmapIO {
+    fun decode(context: Context, uri: Uri): Bitmap? =
+        context.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it) }
+}
+
+/** Save finished PDFs to the public Downloads folder (or app dir pre-Android 10). */
+object FileExport {
+
+    fun savePdfToDownloads(context: Context, pdf: File, displayName: String): Uri? {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val values = ContentValues().apply {
+                put(MediaStore.Downloads.DISPLAY_NAME, displayName)
+                put(MediaStore.Downloads.MIME_TYPE, "application/pdf")
+                put(MediaStore.Downloads.RELATIVE_PATH,
+                    "${Environment.DIRECTORY_DOWNLOADS}/Master Sahib PDF")
+                put(MediaStore.Downloads.IS_PENDING, 1)
+            }
+            val resolver = context.contentResolver
+            val collection = MediaStore.Downloads.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
+            val uri = resolver.insert(collection, values) ?: return null
+            resolver.openOutputStream(uri)?.use { out -> pdf.inputStream().use { it.copyTo(out) } }
+            values.clear(); values.put(MediaStore.Downloads.IS_PENDING, 0)
+            resolver.update(uri, values, null, null)
+            return uri
+        } else {
+            val dir = File(
+                Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
+                "Master Sahib PDF"
+            ).apply { mkdirs() }
+            val dest = File(dir, displayName)
+            pdf.copyTo(dest, overwrite = true)
+            return Uri.fromFile(dest)
+        }
+    }
+
+    fun saveTextToDownloads(context: Context, text: String, displayName: String): Uri? {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val values = ContentValues().apply {
+                put(MediaStore.Downloads.DISPLAY_NAME, displayName)
+                put(MediaStore.Downloads.MIME_TYPE, "text/plain")
+                put(MediaStore.Downloads.RELATIVE_PATH,
+                    "${Environment.DIRECTORY_DOWNLOADS}/Master Sahib PDF")
+                put(MediaStore.Downloads.IS_PENDING, 1)
+            }
+            val resolver = context.contentResolver
+            val collection = MediaStore.Downloads.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
+            val uri = resolver.insert(collection, values) ?: return null
+            resolver.openOutputStream(uri)?.use { it.write(text.toByteArray()) }
+            values.clear(); values.put(MediaStore.Downloads.IS_PENDING, 0)
+            resolver.update(uri, values, null, null)
+            return uri
+        } else {
+            val dir = File(
+                Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
+                "Master Sahib PDF"
+            ).apply { mkdirs() }
+            val dest = File(dir, displayName)
+            dest.writeText(text)
+            return Uri.fromFile(dest)
+        }
+    }
+}
