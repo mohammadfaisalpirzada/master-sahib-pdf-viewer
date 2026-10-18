@@ -17,6 +17,20 @@ android {
         versionName = "1.0"
     }
 
+    // Release signing — reads the keystore from env vars (set by CI from GitHub
+    // secrets). When absent (plain local build) the release stays unsigned.
+    val ksFile = System.getenv("KEYSTORE_FILE")
+    signingConfigs {
+        if (ksFile != null && file(ksFile).exists()) {
+            create("release") {
+                storeFile = file(ksFile)
+                storePassword = System.getenv("KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("KEY_ALIAS")
+                keyPassword = System.getenv("KEY_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
@@ -24,6 +38,9 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            if (ksFile != null && file(ksFile).exists()) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
     }
 
