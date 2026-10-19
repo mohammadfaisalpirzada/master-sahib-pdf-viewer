@@ -14,6 +14,9 @@ import org.junit.Test
 
 class CoreUnitTest {
 
+    private fun argb(r: Int, g: Int, b: Int): Int =
+        (0xFF shl 24) or ((r and 0xFF) shl 16) or ((g and 0xFF) shl 8) or (b and 0xFF)
+
     @Test
     fun paperSizeAndMmToPxConversionIsAccurate() {
         // 25.4 mm = 1 inch -> at 300 DPI, 25.4 mm must be 300 px
@@ -38,8 +41,8 @@ class CoreUnitTest {
 
     @Test
     fun bwPrintFilterSeparatesDarkInkFromLightBackground() {
-        val white = Color.rgb(245, 245, 245)
-        val darkInk = Color.rgb(25, 25, 25)
+        val white = argb(245, 245, 245)
+        val darkInk = argb(25, 25, 25)
         val input = intArrayOf(white, white, white, darkInk)
         val output = ImageFilters.thresholdPixels(input)
         assertEquals(Color.WHITE, output[0])
