@@ -1,0 +1,40 @@
+{
+  "project_info": {
+    "project_number": "1070427182317",
+    "firebase_url": "https://faisal-d0954.firebaseio.com",
+    "project_id": "faisal-d0954",
+    "storage_bucket": "faisal-d0954.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1070427182317:android:0ff3427ea29677709fa8e4",
+        "android_client_info": {
+          "package_name": "com.themastersahib.pdfviewer"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "1070427182317-0ou9afhrgeeh2a9g64haaksvk63b507a.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD19ZprsbhEI3oT-fpEq1psdmz1LECIH_w"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "1070427182317-0ou9afhrgeeh2a9g64haaksvk63b507a.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
