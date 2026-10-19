@@ -5,6 +5,12 @@ plugins {
     id("com.google.devtools.ksp")
 }
 
+// Apply Firebase's google-services plugin only when the config file is present,
+// so the project still builds before Firebase is set up.
+if (file("google-services.json").exists()) {
+    apply(plugin = "com.google.gms.google-services")
+}
+
 android {
     namespace = "com.themastersahib.pdfviewer"
     compileSdk = 34
@@ -74,10 +80,16 @@ dependencies {
     // --- Printing (CNIC duplex / collage straight to printer) ---
     implementation("androidx.print:print:1.0.0")
 
-    // --- Room (recent files, bookmarks, last-read page) ---
+    // --- Room (local cache; kept for offline device storage) ---
     implementation("androidx.room:room-runtime:2.6.1")
     implementation("androidx.room:room-ktx:2.6.1")
     ksp("androidx.room:room-compiler:2.6.1")
+
+    // --- Firebase: Auth (login) + Firestore (per-user cloud data) ---
+    implementation(platform("com.google.firebase:firebase-bom:33.5.1"))
+    implementation("com.google.firebase:firebase-auth")
+    implementation("com.google.firebase:firebase-firestore")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.8.1")
 
     // --- KILLER FEATURE 2: CamScanner-style document scanner (free, on-device) ---
     implementation("com.google.android.gms:play-services-mlkit-document-scanner:16.0.0-beta1")

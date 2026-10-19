@@ -22,13 +22,16 @@ import com.themastersahib.pdfviewer.core.BitmapIO
 import com.themastersahib.pdfviewer.core.FileExport
 import com.themastersahib.pdfviewer.core.Orientation
 import com.themastersahib.pdfviewer.core.PdfTools
+import com.themastersahib.pdfviewer.data.Auth
 import com.themastersahib.pdfviewer.data.Bookmark
-import com.themastersahib.pdfviewer.data.Db
+import com.themastersahib.pdfviewer.data.CloudStore
 import com.themastersahib.pdfviewer.data.RecentFile
 import com.themastersahib.pdfviewer.data.SettingsStore
 import com.themastersahib.pdfviewer.data.UriNames
 import com.themastersahib.pdfviewer.ui.AnnotationScreen
+import com.themastersahib.pdfviewer.ui.FirebaseSetupNeededScreen
 import com.themastersahib.pdfviewer.ui.HomeScreen
+import com.themastersahib.pdfviewer.ui.LoginScreen
 import com.themastersahib.pdfviewer.ui.ReaderScreen
 import com.themastersahib.pdfviewer.ui.ScanExportScreen
 import kotlinx.coroutines.Dispatchers
@@ -51,8 +54,21 @@ private enum class Screen { HOME, VIEWER, SCAN_REVIEW, ANNOTATE }
 fun AppRoot(incomingPdf: Uri?) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val db = remember { Db.get(context) }
     val settings = remember { SettingsStore(context) }
+
+    // --- Auth gate ---
+    val configured = remember { Auth.isConfigured() }
+    var uid by remember { mutableStateOf(Auth.uid) }
+    val colorsEarly = if (settings.darkMode) darkColorScheme() else lightColorScheme()
+    if (!configured) {
+        MaterialTheme(colorScheme = colorsEarly) { FirebaseSetupNeededScreen() }
+        return
+    }
+    if (uid == null) {
+        MaterialTheme(colorScheme = colorsEarly) { LoginScreen(onLoggedIn = { uid = Auth.uid }) }
+        return
+    }
+    val userId = uid!!
 
     var darkMode by remember { mutableStateOf(settings.darkMode) }
     var screen by remember { mutableStateOf(Screen.HOME) }
@@ -70,8 +86,10 @@ fun AppRoot(incomingPdf: Uri?) {
     var annotSourcePage by remember { mutableIntStateOf(0) }
 
     fun refreshLists() = scope.launch {
-        recents = withContext(Dispatchers.IO) { db.recentDao().all() }
-        bookmarks = withContext(Dispatchers.IO) { db.bookmarkDao().all() }
+        runCatching {
+            recents = withContext(Dispatchers.IO) { CloudStore.getRecents(userId) }
+            bookmarks = withContext(Dispatchers.IO) { CloudStore.getBookmarks(userId) }
+        }
     }
 
     suspend fun renderPage(page: Int, width: Int): Bitmap? {
@@ -92,25 +110,30 @@ fun AppRoot(incomingPdf: Uri?) {
     fun recordRecent(count: Int) {
         val uri = pdfUri ?: return
         scope.launch(Dispatchers.IO) {
-            db.recentDao().upsert(
-                RecentFile(
-                    uri = uri.toString(), name = pdfName,
-                    lastOpened = System.currentTimeMillis(),
-                    lastPage = currentPage, pageCount = count
+            runCatching {
+                CloudStore.upsertRecent(
+                    userId,
+                    RecentFile(
+                        uri = uri.toString(), name = pdfName,
+                        lastOpened = System.currentTimeMillis(),
+                        lastPage = currentPage, pageCount = count
+                    )
                 )
-            )
+            }
         }
     }
 
     fun saveLastPage() {
         val uri = pdfUri ?: return
-        scope.launch(Dispatchers.IO) { db.recentDao().updatePage(uri.toString(), currentPage) }
+        scope.launch(Dispatchers.IO) { runCatching { CloudStore.updateLastPage(userId, uri.toString(), currentPage) } }
     }
 
     fun addBookmark(page: Int) {
         val uri = pdfUri ?: return
         scope.launch(Dispatchers.IO) {
-            db.bookmarkDao().add(Bookmark(uri = uri.toString(), name = pdfName, page = page, createdAt = System.currentTimeMillis()))
+            runCatching {
+                CloudStore.addBookmark(userId, Bookmark(uri = uri.toString(), name = pdfName, page = page, createdAt = System.currentTimeMillis()))
+            }
         }
         Toast.makeText(context, "Bookmarked page ${page + 1}", Toast.LENGTH_SHORT).show()
     }
@@ -202,13 +225,14 @@ fun AppRoot(incomingPdf: Uri?) {
                 bookmarks = bookmarks,
                 darkMode = darkMode,
                 onToggleDark = { darkMode = it; settings.darkMode = it },
+                onLogout = { Auth.signOut(); recents = emptyList(); bookmarks = emptyList(); uid = null },
                 onPickPdf = { openPdf.launch(arrayOf("application/pdf")) },
                 onScan = { launchScanner() },
                 onMerge = { mergePdfs.launch(arrayOf("application/pdf")) },
                 onOpenRecent = { loadPdf(Uri.parse(it.uri), it.lastPage) },
                 onOpenBookmark = { loadPdf(Uri.parse(it.uri), it.page) },
                 onDeleteRecent = { r ->
-                    scope.launch { withContext(Dispatchers.IO) { db.recentDao().delete(r) }; refreshLists() }
+                    scope.launch { runCatching { withContext(Dispatchers.IO) { CloudStore.deleteRecent(userId, r.uri) } }; refreshLists() }
                 }
             )
 

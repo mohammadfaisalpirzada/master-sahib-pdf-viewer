@@ -25,6 +25,7 @@ fun HomeScreen(
     bookmarks: List<Bookmark>,
     darkMode: Boolean,
     onToggleDark: (Boolean) -> Unit,
+    onLogout: () -> Unit,
     onPickPdf: () -> Unit,
     onScan: () -> Unit,
     onMerge: () -> Unit,
@@ -45,6 +46,9 @@ fun HomeScreen(
                             if (darkMode) Icons.Filled.LightMode else Icons.Filled.DarkMode,
                             contentDescription = "Toggle theme"
                         )
+                    }
+                    IconButton(onClick = onLogout) {
+                        Icon(Icons.Filled.Logout, contentDescription = "Log out")
                     }
                 }
             )
