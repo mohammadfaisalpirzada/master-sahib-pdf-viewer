@@ -19,8 +19,9 @@ android {
         applicationId = "com.themastersahib.pdfviewer"
         minSdk = 24          // Android 7.0+ (PdfRenderer available since API 21, ML Kit scanner needs Play Services)
         targetSdk = 34
-        versionCode = 1
-        versionName = "1.0"
+        // CI injects APP_VERSION_CODE (GitHub run number) so each release is newer; local defaults to 1.
+        versionCode = (System.getenv("APP_VERSION_CODE") ?: "1").toInt()
+        versionName = System.getenv("APP_VERSION_NAME") ?: "1.0.${(System.getenv("APP_VERSION_CODE") ?: "1")}"
     }
 
     // Release signing — reads the keystore from env vars (set by CI from GitHub
@@ -56,7 +57,10 @@ android {
     }
     kotlinOptions { jvmTarget = "17" }
 
-    buildFeatures { compose = true }
+    buildFeatures {
+        compose = true
+        buildConfig = true
+    }
 }
 
 dependencies {

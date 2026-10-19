@@ -4,12 +4,15 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PictureAsPdf
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import com.themastersahib.pdfviewer.data.Auth
 import kotlinx.coroutines.launch
@@ -24,6 +27,7 @@ fun LoginScreen(onLoggedIn: () -> Unit) {
     var password by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
+    var showPw by remember { mutableStateOf(false) }
 
     fun submit() {
         if (email.isBlank() || password.length < 6) {
@@ -68,8 +72,16 @@ fun LoginScreen(onLoggedIn: () -> Unit) {
             OutlinedTextField(
                 value = password, onValueChange = { password = it },
                 label = { Text("Password") }, singleLine = true,
-                visualTransformation = PasswordVisualTransformation(),
+                visualTransformation = if (showPw) VisualTransformation.None else PasswordVisualTransformation(),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                trailingIcon = {
+                    IconButton(onClick = { showPw = !showPw }) {
+                        Icon(
+                            if (showPw) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
+                            contentDescription = if (showPw) "Hide password" else "Show password"
+                        )
+                    }
+                },
                 modifier = Modifier.fillMaxWidth()
             )
 

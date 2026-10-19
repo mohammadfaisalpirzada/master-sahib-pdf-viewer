@@ -22,6 +22,8 @@ import com.themastersahib.pdfviewer.core.BitmapIO
 import com.themastersahib.pdfviewer.core.FileExport
 import com.themastersahib.pdfviewer.core.Orientation
 import com.themastersahib.pdfviewer.core.PdfTools
+import com.themastersahib.pdfviewer.core.UpdateChecker
+import com.themastersahib.pdfviewer.core.UpdateInfo
 import com.themastersahib.pdfviewer.data.Auth
 import com.themastersahib.pdfviewer.data.Bookmark
 import com.themastersahib.pdfviewer.data.CloudStore
@@ -85,6 +87,8 @@ fun AppRoot(incomingPdf: Uri?) {
     var annotPage by remember { mutableStateOf<Bitmap?>(null) }
     var annotSourcePage by remember { mutableIntStateOf(0) }
     var pendingMergeUris by remember { mutableStateOf<List<Uri>>(emptyList()) }
+    var update by remember { mutableStateOf<UpdateInfo?>(null) }
+    var updating by remember { mutableStateOf(false) }
 
     fun refreshLists() = scope.launch {
         runCatching {
@@ -162,6 +166,7 @@ fun AppRoot(incomingPdf: Uri?) {
 
     LaunchedEffect(incomingPdf) { incomingPdf?.let { loadPdf(it) } }
     LaunchedEffect(screen) { if (screen == Screen.HOME) refreshLists() }
+    LaunchedEffect(Unit) { runCatching { update = UpdateChecker.check() } }
 
     val openPdf = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
@@ -300,6 +305,28 @@ fun AppRoot(incomingPdf: Uri?) {
                     onBookmark = { addBookmark(it) }
                 )
             }
+        }
+
+        update?.let { info ->
+            AlertDialog(
+                onDismissRequest = { if (!updating) update = null },
+                title = { Text("Update available") },
+                text = { Text("A newer version (${info.versionName}) is available. Update now?") },
+                confirmButton = {
+                    TextButton(enabled = !updating, onClick = {
+                        updating = true
+                        scope.launch {
+                            val f = runCatching { UpdateChecker.downloadApk(context, info.url) }.getOrNull()
+                            updating = false; update = null
+                            if (f != null) UpdateChecker.install(context, f)
+                            else Toast.makeText(context, "Update download failed", Toast.LENGTH_LONG).show()
+                        }
+                    }) { Text(if (updating) "Downloading…" else "Update") }
+                },
+                dismissButton = {
+                    TextButton(enabled = !updating, onClick = { update = null }) { Text("Later") }
+                }
+            )
         }
     }
 }

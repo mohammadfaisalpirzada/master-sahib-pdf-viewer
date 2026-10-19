@@ -54,6 +54,8 @@ jobs:
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          APP_VERSION_CODE: ${{ github.run_number }}
+          APP_VERSION_NAME: "1.0.${{ github.run_number }}"
         run: |
           set +e
           if [ "$HAVE_KS" = "1" ]; then TASK=assembleRelease; else TASK=assembleDebug; fi
@@ -91,6 +93,13 @@ jobs:
             echo "::notice::apksigner not found"
           fi
 
+      - name: Write version manifest (for in-app auto-update)
+        run: |
+          cat > latest-version.json <<EOF
+          {"versionCode": ${{ github.run_number }}, "versionName": "1.0.${{ github.run_number }}", "url": "https://github.com/mohammadfaisalpirzada/master-sahib-pdf-viewer/releases/download/latest/Master-Sahib-PDF-Viewer.apk"}
+          EOF
+          cat latest-version.json
+
       - name: Upload APK (artifact)
         uses: actions/upload-artifact@v4
         with:
@@ -105,4 +114,6 @@ jobs:
           tag_name: latest
           name: Master Sahib PDF Viewer — latest
           body: Auto-built APK. Install on Android (enable "install unknown apps").
-          files: Master-Sahib-PDF-Viewer.apk
+          files: |
+            Master-Sahib-PDF-Viewer.apk
+            latest-version.json
