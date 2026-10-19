@@ -75,6 +75,22 @@ jobs:
           echo "Found: $F"
           cp "$F" "Master-Sahib-PDF-Viewer.apk"
 
+      - name: Verify signing
+        run: |
+          APK=Master-Sahib-PDF-Viewer.apk
+          AS=$(ls "${ANDROID_SDK_ROOT:-$ANDROID_HOME}"/build-tools/*/apksigner 2>/dev/null | sort -V | tail -1)
+          echo "HAVE_KS=$HAVE_KS"
+          if [ -n "$AS" ]; then
+            if "$AS" verify --print-certs "$APK" > certs.txt 2>&1; then
+              DN=$(grep -m1 "certificate DN" certs.txt || echo "signed")
+              echo "::notice::APK SIGNED (HAVE_KS=$HAVE_KS) — $DN"
+            else
+              echo "::notice::APK NOT verified-signed (HAVE_KS=$HAVE_KS) — likely debug/unsigned"
+            fi
+          else
+            echo "::notice::apksigner not found"
+          fi
+
       - name: Upload APK (artifact)
         uses: actions/upload-artifact@v4
         with:
