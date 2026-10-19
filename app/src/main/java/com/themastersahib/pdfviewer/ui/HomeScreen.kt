@@ -39,7 +39,7 @@ fun HomeScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Master Sahib PDF Viewer") },
+                title = { Text("Photostat Master") },
                 actions = {
                     IconButton(onClick = { onToggleDark(!darkMode) }) {
                         Icon(

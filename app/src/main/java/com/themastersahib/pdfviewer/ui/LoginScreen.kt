@@ -51,7 +51,9 @@ fun LoginScreen(onLoggedIn: () -> Unit) {
         ) {
             Icon(Icons.Filled.PictureAsPdf, contentDescription = null, modifier = Modifier.size(56.dp))
             Spacer(Modifier.height(12.dp))
-            Text("Master Sahib PDF Viewer", style = MaterialTheme.typography.headlineSmall)
+            Text("Photostat Master", style = MaterialTheme.typography.headlineSmall)
+            Text("by The Master Sahib", style = MaterialTheme.typography.labelSmall)
+            Spacer(Modifier.height(4.dp))
             Text(if (isSignUp) "Create your account" else "Sign in to continue",
                 style = MaterialTheme.typography.bodyMedium)
             Spacer(Modifier.height(24.dp))
