@@ -1,0 +1,40 @@
+{
+  "project_info": {
+    "project_number": "900136320125",
+    "firebase_url": "https://master-the-quiz-score-default-rtdb.asia-southeast1.firebasedatabase.app",
+    "project_id": "master-the-quiz-score",
+    "storage_bucket": "master-the-quiz-score.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:900136320125:android:6f6a1d3b32a13965454514",
+        "android_client_info": {
+          "package_name": "com.themastersahib.pdfviewer"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "900136320125-973vld6568p26d6bu7vorh0rjoo0dcio.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC1_dLAL0dAWhs4ffpRddO_OnPbkqWAgBM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "900136320125-973vld6568p26d6bu7vorh0rjoo0dcio.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
