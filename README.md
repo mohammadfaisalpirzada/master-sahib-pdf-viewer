@@ -1,90 +1,52 @@
-# Master Sahib PDF Viewer
+# Photostat Master (Master Sahib PDF Viewer)
 
-An Android PDF viewer with two headline features:
+An Android PDF viewer, document scanner, and photostat toolkit built for Pakistan (`com.themastersahib.pdfviewer`):
 
-1. **Save any page as a proper image** — one tap exports the current page as a
+1. **Save any page as a proper image** -- one tap exports the current page as a
    high-resolution JPEG straight to your Gallery (sharper than a screenshot,
-   because it renders the PDF at ~2500 px wide instead of your screen size).
-2. **CamScanner-style document scanning** — capture documents with the camera,
-   auto edge-detection + perspective correction, and save as PDF or images.
+   rendered at 2500 px wide).
+2. **CamScanner-style document scanning & Photostat tools** -- capture documents
+   with the camera, auto edge-detection + perspective correction, apply bulk or
+   per-page filters, reorder/rotate/delete pages, export to PDF (A4/Letter/Legal,
+   200/300 DPI), Collage, or **CNIC Duplex sheet** (2x5 flip-aligned).
+3. **Bilingual OCR (English + Urdu/Nastaliq)** -- on-device ML Kit for Latin script
+   plus bundled Tesseract (`urd.traineddata` + `eng.traineddata`) for Urdu/Nastaliq.
 
-Built with **Kotlin + Jetpack Compose**. Free, no paid SDKs.
-
----
-
-## How to open & build
-
-1. Open **Android Studio** (Koala / 2024.1 or newer).
-2. `File ▸ Open` → select this folder (`Master Sahib PDF Viewer`).
-3. Let Gradle sync (first sync downloads dependencies — needs internet).
-4. Plug in an Android phone (USB debugging on) or start an emulator
-   with **Google Play** image (ML Kit scanner needs Play Services).
-5. Press **Run ▶**.
-
-> Note: Android Studio will generate the Gradle **wrapper** (`gradlew`,
-> `gradle/wrapper/`) on first open, and the launcher icon PNGs can be made via
-> `File ▸ New ▸ Image Asset`. The `.kt` source and config here are the real code.
+Built with **Kotlin + Jetpack Compose (Material 3)**.
 
 ---
 
-## What works now
+## What Works Now
 
 | Feature | File | Status |
 |---|---|---|
-| Open PDF from storage | `MainActivity.kt` | ✅ |
-| **Open PDF from "Open with"** (tap a PDF in any app) | `AndroidManifest.xml` | ✅ |
-| Render + scroll pages | `PdfRendererHelper.kt` | ✅ |
-| **Save page as image** (hi-res) | `ImageSaver.kt` | ✅ |
-| Document scanner (**auto-crop** built-in) | `MainActivity.kt` (ML Kit) | ✅ |
-| Scan review + **bulk filters** (Grayscale / B&W Print / Magic) | `ui/ScanExportScreen.kt`, `core/ImageFilters.kt` | ✅ |
-| Scan page editing: **add more pages, rotate, delete** | `ui/ScanExportScreen.kt` | ✅ |
-| Scan → **PDF** | `core/PdfBuilder.kt` | ✅ |
-| **Collage** mode | `core/CollageLayout.kt` | ✅ |
-| **CNIC duplex mode** (2×5, flip-aligned) + direct print | `core/CnicLayout.kt` | ✅ |
-| **Annotation** (pen / highlighter / signature) → flatten → save image/PDF | `ui/AnnotationScreen.kt` | ✅ |
-| **Home dashboard**: Recent + Bookmarks, **last-read page** resume, **dark mode** | `ui/HomeScreen.kt`, `data/AppDatabase.kt` | ✅ |
-| **Reader**: pinch/double-tap **zoom**, **night mode**, **page slider**, **thumbnails**, **text search** | `ui/ReaderScreen.kt`, `core/PdfTextSearch.kt` | ✅ |
-| **OCR** scanned pages → copy + .txt (ML Kit, on-device) | `core/Ocr.kt` | ✅ |
-| **Urdu/nastaliq OCR** (Tesseract — needs traineddata, see assets/tessdata) | `core/UrduOcr.kt` | ✅ |
-| **Share + Print** PDF from reader | `core/SharePrint.kt` | ✅ |
-| **Merge / Split / Rotate** PDFs | `core/PdfTools.kt` | ✅ |
-| **Vector annotation** into original PDF (text kept) | `core/PdfTools.kt`, `ui/AnnotationScreen.kt` | ✅ |
-| **Splash screen** + app icon | `res/`, `App`/`MainActivity` | ✅ |
+| Open PDF from storage, "Open with", & Share (`ACTION_VIEW` + `ACTION_SEND`) | `AndroidManifest.xml`, `MainActivity.kt` | Ready |
+| Password-protected PDF unlock prompt | `ui/ReaderScreen.kt`, `core/PdfTextSearch.kt` | Ready |
+| Render + scroll pages (vertical scroll / horizontal swipe toggle) | `ui/ReaderScreen.kt`, `PdfRendererHelper.kt` | Ready |
+| **Save page as image** (hi-res 2500 px) | `ImageSaver.kt` | Ready |
+| Document scanner (**auto-crop** built-in) | `MainActivity.kt` (ML Kit) | Ready |
+| Scan review: **bulk + per-page filters** (Grayscale / B&W Print / Magic) | `ui/ScanExportScreen.kt`, `core/ImageFilters.kt` | Ready |
+| Scan page editing: **add more pages, reorder, rotate, delete** | `ui/ScanExportScreen.kt` | Ready |
+| Scan -> **PDF** (selectable A4/Letter/Legal & 200/300 DPI) | `core/PdfBuilder.kt`, `ui/ScanExportScreen.kt` | Ready |
+| **Collage** mode | `core/CollageLayout.kt` | Ready |
+| **CNIC duplex mode** (2x5 symmetric flip-aligned) + direct print | `core/CnicLayout.kt` | Ready |
+| **Annotation** (pen / highlighter / signature) -> image, flattened PDF, or vector PDF (text kept) | `ui/AnnotationScreen.kt`, `core/PdfTools.kt` | Ready |
+| **Home dashboard**: Recent + Bookmarks, filter search bar, resume last-read page, dark mode | `ui/HomeScreen.kt`, `data/CloudStore.kt` | Ready |
+| **Authentication**: Email/Password (with password reset) + **Continue with Google** | `ui/LoginScreen.kt`, `data/AuthRepository.kt` | Ready |
+| **Reader**: pinch/double-tap zoom, night mode, page slider, thumbnails, **text search with in-page word highlighting** | `ui/ReaderScreen.kt`, `core/PdfTextSearch.kt` | Ready |
+| **OCR** scanned pages -> copy + .txt (ML Kit Latin + Tesseract Urdu/Nastaliq bundled) | `core/Ocr.kt`, `core/UrduOcr.kt`, `assets/tessdata/` | Ready |
+| **Share + Print** PDF from reader | `core/SharePrint.kt` | Ready |
+| **Merge / Split / Rotate** PDFs | `core/PdfTools.kt` | Ready |
+| **In-app Auto-Update** from GitHub Releases (`latest-version.json`) | `core/UpdateChecker.kt`, `MainActivity.kt` | Ready |
+| **Unit Test Suite** (CNIC duplex symmetry, paper conversion, B&W thresholding) | `app/src/test/.../CoreUnitTest.kt` | Ready |
 
-> Full layered design → see **ARCHITECTURE.md**.
+---
 
-### CNIC mode — printing steps
+## CNIC Mode -- Printing Steps
 1. Scan CNIC **front** (page 1) and **back** (page 2).
-2. Tap **CNIC Mode** → sheet Gallery mein save + print dialog khulega.
-3. Page print karein, phir **wahi sheet dobara** tray mein daal ke **wahi page** print karein, **LONG edge se flip** (left↔right). Back har card ke front ke peechhe aa jayegi.
-
-## Auto-build APK (GitHub Actions)
-
-A workflow at `.github/workflows/build-apk.yml` builds a **fresh debug APK on every push**.
-Push this project to any GitHub repo → open the **Actions** tab → latest run →
-download the **master-sahib-pdf-viewer-debug** artifact (the APK). No local SDK needed.
-
-## Roadmap
-
-- **Phase 3 — Annotation:** highlight, freehand draw, signature (Compose Canvas overlay).
-- **Phase 4 — Editing:** merge / split / rotate / delete pages (PdfBox-Android, Apache 2.0 — dependency already commented in `app/build.gradle.kts`).
-- **Phase 5 — Convert / Export + OCR:** PDF → image batch, compress, text extract (ML Kit Text Recognition).
-- Pinch-to-zoom, thumbnails grid, recent files, dark mode.
+2. Tap **CNIC Mode** -> sheet saves to Gallery and opens the system print dialog.
+3. Print the page, put the **same sheet** back in the tray, and print the **same page** again, flipping on the **LONG edge** (left-to-right). Every card's back aligns directly behind its front.
 
 ---
 
-## Key design notes
-
-- **PdfRenderer** (`android.graphics.pdf`) is built into Android — no license,
-  no cost. It renders a page into a `Bitmap` at any resolution: that single
-  capability powers both the on-screen view and the image export.
-- **Saving to Gallery** uses `MediaStore` with scoped storage, so on Android 10+
-  the app needs **no storage permission**. Images land in
-  `Pictures/Master Sahib PDF`.
-- **ML Kit Document Scanner** (`play-services-mlkit-document-scanner`) provides a
-  full, polished scanning UI out of the box and returns both JPEG pages and a
-  ready PDF — this is the "CamScanner" job, done on-device and free.
-
----
-
-**The Master Sahib** · themastersahib.com
+**The Master Sahib** - www.mastersahib.com

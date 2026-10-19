@@ -1,20 +1,25 @@
 package com.themastersahib.pdfviewer.ui
 
 import android.app.Activity
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.graphics.Bitmap
 import android.widget.Toast
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AddAPhoto
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.ArrowBackIosNew
+import androidx.compose.material.icons.filled.ArrowForwardIos
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.RotateRight
-import androidx.compose.material.icons.filled.AddAPhoto
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -23,9 +28,6 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.print.PrintHelper
-import android.content.ClipData
-import android.content.ClipboardManager
-import android.content.Context
 import com.themastersahib.pdfviewer.ImageSaver
 import com.themastersahib.pdfviewer.core.*
 import kotlinx.coroutines.Dispatchers
@@ -34,8 +36,9 @@ import kotlinx.coroutines.withContext
 import java.io.File
 
 /**
- * Review screen shown AFTER a scan: pick a bulk filter, then save as images,
- * make a PDF, build a collage, or run CNIC duplex mode.
+ * Review screen shown AFTER a scan: pick a bulk filter (or override per-page),
+ * reorder/rotate/delete pages, choose paper size/DPI, then save as images,
+ * make a PDF, build a collage, run OCR, or print CNIC duplex mode.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -44,15 +47,24 @@ fun ScanExportScreen(
     onBack: () -> Unit,
     onAddPages: () -> Unit = {},
     onRotatePage: (Int) -> Unit = {},
-    onDeletePage: (Int) -> Unit = {}
+    onDeletePage: (Int) -> Unit = {},
+    onMovePage: (Int, Int) -> Unit = { _, _ -> }
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
-    var filter by remember { mutableStateOf(FilterType.NONE) }
-    // Filtered copy used for all exports (bulk).
-    val pages by remember(filter, rawPages) {
-        mutableStateOf(ImageFilters.applyAll(rawPages, filter))
+    var bulkFilter by remember { mutableStateOf(FilterType.NONE) }
+    var perPageOverrides by remember { mutableStateOf<Map<Int, FilterType>>(emptyMap()) }
+    var selectedPaper by remember { mutableStateOf(PaperSize.A4) }
+    var selectedDpi by remember { mutableIntStateOf(200) }
+
+    val pages by remember(bulkFilter, perPageOverrides, rawPages) {
+        mutableStateOf(
+            rawPages.mapIndexed { idx, bmp ->
+                val f = perPageOverrides[idx] ?: bulkFilter
+                ImageFilters.apply(bmp, f)
+            }
+        )
     }
     var busy by remember { mutableStateOf(false) }
 
@@ -82,15 +94,31 @@ fun ScanExportScreen(
     ) { padding ->
         Column(Modifier.padding(padding).fillMaxSize()) {
 
-            // --- Bulk filter chips ---
+            // --- Bulk filter chips + Paper size options ---
             Row(
                 Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                FilterChip("Original", filter == FilterType.NONE) { filter = FilterType.NONE }
-                FilterChip("Grayscale", filter == FilterType.GRAYSCALE) { filter = FilterType.GRAYSCALE }
-                FilterChip("B&W Print", filter == FilterType.BW_PRINT) { filter = FilterType.BW_PRINT }
-                FilterChip("Magic", filter == FilterType.MAGIC) { filter = FilterType.MAGIC }
+                FilterChip("Original", bulkFilter == FilterType.NONE) {
+                    bulkFilter = FilterType.NONE; perPageOverrides = emptyMap()
+                }
+                FilterChip("Grayscale", bulkFilter == FilterType.GRAYSCALE) {
+                    bulkFilter = FilterType.GRAYSCALE; perPageOverrides = emptyMap()
+                }
+                FilterChip("B&W Print", bulkFilter == FilterType.BW_PRINT) {
+                    bulkFilter = FilterType.BW_PRINT; perPageOverrides = emptyMap()
+                }
+                FilterChip("Magic", bulkFilter == FilterType.MAGIC) {
+                    bulkFilter = FilterType.MAGIC; perPageOverrides = emptyMap()
+                }
+                Spacer(Modifier.width(8.dp))
+                FilterChip("A4", selectedPaper == PaperSize.A4) { selectedPaper = PaperSize.A4 }
+                FilterChip("Letter", selectedPaper == PaperSize.LETTER) { selectedPaper = PaperSize.LETTER }
+                FilterChip("Legal", selectedPaper == PaperSize.LEGAL) { selectedPaper = PaperSize.LEGAL }
+                FilterChip(if (selectedDpi == 300) "300 DPI (HQ)" else "200 DPI", selectedDpi == 300) {
+                    selectedDpi = if (selectedDpi == 300) 200 else 300
+                }
             }
 
             // --- Action buttons ---
@@ -115,15 +143,16 @@ fun ScanExportScreen(
                 Button(enabled = !busy, onClick = {
                     run("Making PDF") {
                         val out = File(context.cacheDir, "scan_${System.currentTimeMillis()}.pdf")
-                        PdfBuilder.build(pages, out)
+                        PdfBuilder.build(pages, out, paper = selectedPaper, dpi = selectedDpi)
                         val uri = FileExport.savePdfToDownloads(context, out, out.name)
-                        if (uri != null) "PDF saved to Downloads ▸ Master Sahib PDF" else "PDF save failed"
+                        if (uri != null) "PDF (${selectedPaper.name}, $selectedDpi DPI) saved to Downloads ▸ Master Sahib PDF"
+                        else "PDF save failed"
                     }
                 }) { Text("Make PDF") }
 
                 Button(enabled = !busy, onClick = {
                     run("Building collage") {
-                        val collage = CollageLayout.build(pages)
+                        val collage = CollageLayout.build(pages, dpi = selectedDpi, paper = selectedPaper)
                         val uri = ImageSaver.saveToGallery(context, collage, "collage_${System.currentTimeMillis()}")
                         if (uri != null) "Collage saved to Gallery" else "Collage save failed"
                     }
@@ -131,7 +160,6 @@ fun ScanExportScreen(
 
                 Button(enabled = !busy, onClick = {
                     run("Running OCR") {
-                        // OCR on ORIGINAL pages for best accuracy.
                         val text = Ocr.recognizePages(rawPages)
                         if (text.isBlank()) "No text found" else {
                             val uri = FileExport.saveTextToDownloads(
@@ -157,13 +185,11 @@ fun ScanExportScreen(
                 }) { Text("OCR Urdu") }
 
                 Button(enabled = !busy && pages.size >= 2, onClick = {
-                    // CNIC: page 1 = front, page 2 = back.
-                    val sheet = CnicLayout.build(front = pages[0], back = pages[1])
+                    val sheet = CnicLayout.build(front = pages[0], back = pages[1], paper = selectedPaper)
                     scope.launch {
                         withContext(Dispatchers.IO) {
                             ImageSaver.saveToGallery(context, sheet, "cnic_${System.currentTimeMillis()}")
                         }
-                        // Open the system print dialog for immediate duplex printing.
                         PrintHelper(context as Activity).apply {
                             scaleMode = PrintHelper.SCALE_MODE_FIT
                         }.printBitmap("CNIC Duplex", sheet)
@@ -174,24 +200,66 @@ fun ScanExportScreen(
 
             if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
 
-            // --- Thumbnails ---
+            // --- Thumbnails with per-page filter cycling, reordering, rotate, delete ---
             LazyVerticalGrid(
-                columns = GridCells.Adaptive(140.dp),
+                columns = GridCells.Adaptive(150.dp),
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(12.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 itemsIndexed(pages) { idx, b ->
-                    Box {
-                        Image(bitmap = b.asImageBitmap(), contentDescription = "Page ${idx + 1}",
-                            modifier = Modifier.fillMaxWidth())
-                        Row(Modifier.align(Alignment.TopEnd)) {
-                            FilledTonalIconButton(onClick = { onRotatePage(idx) }) {
-                                Icon(Icons.Filled.RotateRight, "Rotate")
-                            }
-                            FilledTonalIconButton(onClick = { onDeletePage(idx) }) {
-                                Icon(Icons.Filled.Delete, "Delete")
+                    val currentPageFilter = perPageOverrides[idx] ?: bulkFilter
+                    Card {
+                        Box {
+                            Image(
+                                bitmap = b.asImageBitmap(),
+                                contentDescription = "Page ${idx + 1}",
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            // Top-left: page number + per-page filter cycle button
+                            AssistChip(
+                                onClick = {
+                                    val all = FilterType.entries
+                                    val next = all[(currentPageFilter.ordinal + 1) % all.size]
+                                    perPageOverrides = perPageOverrides.toMutableMap().apply { put(idx, next) }
+                                },
+                                label = { Text("#${idx + 1} · ${currentPageFilter.name}") },
+                                modifier = Modifier.align(Alignment.TopStart).padding(4.dp)
+                            )
+                            // Bottom toolbar: Move Left, Move Right, Rotate, Delete
+                            Row(
+                                Modifier.align(Alignment.BottomEnd).padding(2.dp),
+                                horizontalArrangement = Arrangement.spacedBy(2.dp)
+                            ) {
+                                if (idx > 0) {
+                                    FilledTonalIconButton(
+                                        onClick = { onMovePage(idx, idx - 1) },
+                                        modifier = Modifier.size(32.dp)
+                                    ) {
+                                        Icon(Icons.Filled.ArrowBackIosNew, "Move earlier", modifier = Modifier.size(16.dp))
+                                    }
+                                }
+                                if (idx < pages.lastIndex) {
+                                    FilledTonalIconButton(
+                                        onClick = { onMovePage(idx, idx + 1) },
+                                        modifier = Modifier.size(32.dp)
+                                    ) {
+                                        Icon(Icons.Filled.ArrowForwardIos, "Move later", modifier = Modifier.size(16.dp))
+                                    }
+                                }
+                                FilledTonalIconButton(
+                                    onClick = { onRotatePage(idx) },
+                                    modifier = Modifier.size(32.dp)
+                                ) {
+                                    Icon(Icons.Filled.RotateRight, "Rotate", modifier = Modifier.size(18.dp))
+                                }
+                                FilledTonalIconButton(
+                                    onClick = { onDeletePage(idx) },
+                                    modifier = Modifier.size(32.dp)
+                                ) {
+                                    Icon(Icons.Filled.Delete, "Delete", modifier = Modifier.size(18.dp))
+                                }
                             }
                         }
                     }

@@ -1,89 +1,43 @@
-# Master Sahib PDF Viewer — Architecture
-
-Yeh aapke diye hue layered structure ke mutabiq hai. ✅ = ab ban chuka, 🔜 = agle phase.
+# Photostat Master (Master Sahib PDF Viewer) -- Architecture
 
 ```
 PDF_Viewer_App
 │
 ├── 1. App Configuration & Manifest Layer
-│   ├── AndroidManifest.xml      ✅  PDF "Open with" chooser + Share intent, scanner
-│   └── build.gradle.kts         ✅  Compose, ML Kit scanner, print
+│   ├── AndroidManifest.xml      Ready  PDF "Open with" chooser + Share intent (ACTION_VIEW + ACTION_SEND), scanner, install packages
+│   └── build.gradle.kts         Ready  Compose, ML Kit scanner, Tesseract Urdu OCR, Firebase Auth/Firestore, ARM ABI filter
 │
 ├── 2. UI / Presentation Layer
-│   ├── Splash & Onboarding      ◐  splash ✅ (core-splashscreen); onboarding 🔜
-│   ├── Home / Dashboard         ✅  ui/HomeScreen.kt (tabs + dark mode toggle)
-│   │   ├── Recent Files         ✅  Room DB, last page yaad
-│   │   ├── Favorites/Bookmarks  ✅  Room DB
-│   │   └── Local File Browser   ◐  SAF system picker (Android 13+ permission-safe)
-│   ├── PDF Reader Screen        ✅  ui/ReaderScreen.kt — Pdfium view, zoom, "Save page as image"
-│   │   ├── Top Action Bar       ✅  open/scan/search/night/thumbs/share/print + rotate/split
-│   │   ├── PDF Canvas/Page View ✅  AndroidPdfViewer (pinch + double-tap zoom)
-│   │   └── Bottom Tool Bar      ✅  page slider + annotation (pen/highlight/sign); night mode ✅
-│   └── Document Scanner Screen  ✅  ML Kit (auto edge-detect + crop + filter built-in)
-│       ├── Camera Preview       ✅  ML Kit UI
-│       └── Crop & Filter View   ✅  ML Kit crop + filters + add/rotate/delete pages (ScanExportScreen)
+│   ├── Splash & Auth Gate       Ready  Splash (core-splashscreen) + LoginScreen (Email/Password + Google Sign-In + Password Reset)
+│   ├── Home / Dashboard         Ready  ui/HomeScreen.kt (Recent + Bookmarks tabs, filter search, dark mode toggle, logout)
+│   │   ├── Recent Files         Ready  CloudStore (Firestore per-uid with offline persistence), last page resume
+│   │   ├── Favorites/Bookmarks  Ready  CloudStore (Firestore per-uid, add + delete bookmarks)
+│   │   └── Local File Browser   Ready  SAF system picker + Browse Device & Merge PDFs shortcuts
+│   ├── PDF Reader Screen        Ready  ui/ReaderScreen.kt — Pdfium view, zoom, password unlock, "Save page as image"
+│   │   ├── Top Action Bar       Ready  search/night/thumbs/bookmark/annotate/save-image + scroll toggle/share/print/rotate/split
+│   │   ├── PDF Canvas/Page View Ready  AndroidPdfViewer (pinch + double-tap zoom + in-page search word highlight overlay)
+│   │   └── Bottom Tool Bar      Ready  page slider + annotation (pen/highlight/signature)
+│   └── Document Scanner Screen  Ready  ML Kit (auto edge-detect + crop) + ScanExportScreen
+│       ├── Camera Preview       Ready  ML Kit UI
+│       └── Crop & Filter View   Ready  Bulk + per-page filters, add/reorder/rotate/delete pages, paper size/DPI selector
 │
-├── 3. Business Logic / ViewModel Layer
-│   ├── FileListViewModel        🔜  (MediaStore query + sort)
-│   ├── PdfReaderController      ◐  MainActivity mein inline; alag ViewModel 🔜
-│   └── ScannerController        ✅  MainActivity scan flow + ScanExportScreen
+├── 3. Core Engines Layer
+│   ├── A. PDF Rendering & Manipulation Engine
+│   │   ├── Page Decoder         Ready  Pdfium (android-pdf-viewer) for view; PdfRenderer for image/thumb export
+│   │   ├── Text Extractor       Ready  PdfBox-Android -> text search + glyph bounding-box word highlighting
+│   │   └── Annotation & Tools   Ready  Flatten save + vector-into-original-PDF (text kept), merge/split/rotate
+│   ├── B. Scanner & OCR Engine
+│   │   ├── Edge & Perspective   Ready  ML Kit Document Scanner
+│   │   └── OCR Engine           Ready  ML Kit (Latin, core/Ocr.kt) + Tesseract (Urdu/Nastaliq, core/UrduOcr.kt + assets/tessdata)
+│   └── C. Self-Update Engine
+│       └── UpdateChecker        Ready  Checks latest-version.json on GitHub Releases, downloads APK with redirect handling, installs
 │
-├── 4. Core Engines Layer
-│   ├── A. PDF Rendering Engine
-│   │   ├── Page Decoder         ✅  Pdfium (AndroidPdfViewer) for view; PdfRenderer for image/thumb export
-│   │   ├── Text Extractor       ✅  PdfBox-Android → text search (find+jump); word-highlight 🔜
-│   │   └── Annotation Writer    ✅  flatten save + vector-into-original-PDF (text kept, PdfBox)
-│   └── B. Scanner & OCR Engine
-│       ├── Edge Detection       ✅  ML Kit (TFLite andar)
-│       ├── Perspective Transform✅  ML Kit
-│       └── OCR Engine           ✅  ML Kit (Latin, core/Ocr.kt) + Tesseract (Urdu/nastaliq, core/UrduOcr.kt)
-│
-└── 5. Data & Storage Layer
-    ├── Local DB (Room)          ✅  data/AppDatabase.kt — recent, last page, bookmarks
-    ├── SharedPreferences        ◐  data/SettingsStore.kt — dark mode ✅; scroll dir stored, use 🔜
-    └── File System Manager      ✅  ImageSaver + FileExport; merge/split/rotate (PdfTools); share/print (SharePrint)
+└── 4. Data & Storage Layer
+    ├── CloudStore (Firestore)   Ready  data/CloudStore.kt — per-user recents, last page, bookmarks (offline persistence enabled)
+    ├── AuthRepository           Ready  data/AuthRepository.kt — Firebase Auth + Google Sign-In
+    ├── SharedPreferences        Ready  data/SettingsStore.kt — dark mode, vertical/horizontal scroll direction
+    └── File System Manager      Ready  ImageSaver + FileExport; PdfTools; SharePrint
 ```
 
-## Core modules (banaye gaye)
-
-| File | Kaam |
-|---|---|
-| `core/PaperSize.kt` | A4/Letter/Legal, mm→px, auto portrait/landscape |
-| `core/ImageFilters.kt` | Bulk filters: Grayscale, **B&W Print**, Magic |
-| `core/PdfBuilder.kt` | Bitmaps → multi-page PDF (`PdfDocument`) |
-| `core/CnicLayout.kt` | **CNIC duplex sheet** (2 col × 5 row, flip-aligned) |
-| `core/CollageLayout.kt` | Grid collage |
-| `core/FileExport.kt` | PDF → Downloads; scan Uri → Bitmap |
-| `PdfRendererHelper.kt` | PDF page → Bitmap |
-| `ImageSaver.kt` | Page/image → Gallery (MediaStore) |
-| `ui/ScanExportScreen.kt` | Filter + Save Images / PDF / Collage / CNIC / Print |
-| `ui/AnnotationScreen.kt` | Pen / highlighter / signature → flatten onto page → save image/PDF |
-| `ui/HomeScreen.kt` | Dashboard: Recent + Bookmarks tabs, dark mode toggle |
-| `data/AppDatabase.kt` | Room: RecentFile + Bookmark entities/DAOs |
-| `data/SettingsStore.kt` | SharedPreferences settings + Uri display-name helper |
-| `ui/ReaderScreen.kt` | Pdfium viewer: zoom, night, page slider, thumbnails, text search |
-| `core/PdfTextSearch.kt` | PdfBox text extract → matching page indices |
-| `App.kt` | Application — PdfBox init |
-| `core/Ocr.kt` | ML Kit OCR (Latin): bitmap(s) → text |
-| `core/UrduOcr.kt` | Tesseract OCR (Urdu/nastaliq) — needs assets/tessdata |
-| `core/PdfTools.kt` | Merge / split / rotate + vector annotation into PDF |
-| `core/SharePrint.kt` | Share (FileProvider) + print PDF (PrintManager) |
-
-## PDF engines (abhi kya use ho raha hai)
-- **Viewing:** `com.github.barteksc:AndroidPdfViewer` (Pdfium) — zoom, night mode, page slider, swipe.
-- **Text search:** `com.tom-roush:pdfbox-android` — per-page text extract → find + jump (word-level highlight abhi nahi; glyph coordinates se baad mein).
-- **Image/thumbnail export:** Android built-in `PdfRenderer` (`PdfRendererHelper.kt`) — page → Bitmap.
-- **Annotation save:** abhi flatten (draw → nayi image/PDF). Vector-into-original-PDF ke liye PdfBox-Android se Annotation Writer baad mein.
-
-Sab free / open-source, koi paid SDK nahi.
-
-> Note: barteksc AndroidPdfViewer thoda purana hai; agar Android 15 (16 KB page) ya maintenance issue aaye to maintained fork `com.github.mhiew:android-pdf-viewer` pe shift ho sakte hain (API almost same).
-
-## Next phases (tarteeb)
-1. **Phase 3 — Annotation:** PdfBox-Android se highlight/draw/sign save.
-2. **Phase 4 — Reader upgrade:** Pdfium pe switch → text search, night mode, thumbnails, page slider.
-3. **Phase 5 — Data layer:** Room (recent/bookmarks/last page) + SharedPreferences (settings) + file browser.
-4. **Phase 6 — OCR:** ML Kit Text Recognition (scan → searchable text).
-
 ---
-**The Master Sahib** · themastersahib.com
+**The Master Sahib** - www.mastersahib.com

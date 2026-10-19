@@ -1,6 +1,8 @@
 package com.themastersahib.pdfviewer.ui
 
 import android.graphics.Bitmap
+import android.graphics.Paint as APaint
+import android.graphics.RectF
 import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
@@ -15,15 +17,16 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.github.barteksc.pdfviewer.PDFView
 import com.themastersahib.pdfviewer.PdfRendererHelper
 import com.themastersahib.pdfviewer.core.FileExport
+import com.themastersahib.pdfviewer.core.NormalizedRect
 import com.themastersahib.pdfviewer.core.PdfTextSearch
 import com.themastersahib.pdfviewer.core.PdfTools
 import com.themastersahib.pdfviewer.core.SharePrint
@@ -33,7 +36,8 @@ import kotlinx.coroutines.withContext
 
 /**
  * Pdfium-backed reader: pinch/double-tap zoom, night mode, vertical/horizontal
- * scroll, a page slider, a thumbnail strip, and text search (find + jump).
+ * scroll, page slider, thumbnail strip, password-protected PDF support, and
+ * text search with in-page word highlighting.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -42,6 +46,7 @@ fun ReaderScreen(
     name: String,
     initialPage: Int,
     verticalScroll: Boolean,
+    onToggleVerticalScroll: (Boolean) -> Unit = {},
     onBack: () -> Unit,
     onLoaded: (Int) -> Unit,
     onPageChanged: (Int) -> Unit,
@@ -55,15 +60,22 @@ fun ReaderScreen(
     var page by remember { mutableIntStateOf(initialPage) }
     var count by remember { mutableIntStateOf(0) }
     var night by remember { mutableStateOf(false) }
+    var isVertical by remember { mutableStateOf(verticalScroll) }
     var showThumbs by remember { mutableStateOf(false) }
     var showSearch by remember { mutableStateOf(false) }
     var query by remember { mutableStateOf("") }
     var matches by remember { mutableStateOf<List<Int>>(emptyList()) }
+    var matchRectsByPage by remember { mutableStateOf<Map<Int, List<NormalizedRect>>>(emptyMap()) }
     var matchIdx by remember { mutableIntStateOf(0) }
     var searching by remember { mutableStateOf(false) }
     var thumbs by remember { mutableStateOf<List<Bitmap>>(emptyList()) }
     var pdfView by remember { mutableStateOf<PDFView?>(null) }
     var menu by remember { mutableStateOf(false) }
+
+    // Password-protected PDF state
+    var pdfPassword by remember { mutableStateOf<String?>(null) }
+    var needsPassword by remember { mutableStateOf(false) }
+    var passwordInput by remember { mutableStateOf("") }
 
     BackHandler { onBack() }
 
@@ -74,26 +86,36 @@ fun ReaderScreen(
         }
     }
 
-    fun jump(p: Int) { pdfView?.jumpTo(p, true) }
+    fun jump(p: Int) {
+        pdfView?.jumpTo(p, true)
+        pdfView?.invalidate()
+    }
 
     fun doSearch() {
         if (query.isBlank()) return
         searching = true
         scope.launch {
-            val found = withContext(Dispatchers.IO) { PdfTextSearch.findPages(context, uri, query) }
+            val found = withContext(Dispatchers.IO) {
+                runCatching { PdfTextSearch.search(context, uri, query, pdfPassword ?: "") }.getOrDefault(emptyList())
+            }
             searching = false
-            matches = found; matchIdx = 0
-            if (found.isEmpty()) Toast.makeText(context, "No matches", Toast.LENGTH_SHORT).show()
-            else jump(found.first())
+            matches = found.map { it.pageIndex }
+            matchRectsByPage = found.associate { it.pageIndex to it.rects }
+            matchIdx = 0
+            pdfView?.invalidate()
+            if (matches.isEmpty()) Toast.makeText(context, "No matches", Toast.LENGTH_SHORT).show()
+            else jump(matches.first())
         }
     }
 
     LaunchedEffect(showThumbs) {
         if (showThumbs && thumbs.isEmpty() && count > 0) {
             thumbs = withContext(Dispatchers.IO) {
-                PdfRendererHelper(context.contentResolver, uri).use { r ->
-                    (0 until r.pageCount).take(300).map { r.renderPage(it, targetWidthPx = 150) }
-                }
+                runCatching {
+                    PdfRendererHelper(context.contentResolver, uri).use { r ->
+                        (0 until r.pageCount).take(300).map { r.renderPage(it, targetWidthPx = 150) }
+                    }
+                }.getOrDefault(emptyList())
             }
         }
     }
@@ -104,7 +126,14 @@ fun ReaderScreen(
                 title = { Text(name.ifEmpty { "Viewer" }, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                 navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.Filled.ArrowBack, "Back") } },
                 actions = {
-                    IconButton(onClick = { showSearch = !showSearch }) { Icon(Icons.Filled.Search, "Search") }
+                    IconButton(onClick = {
+                        showSearch = !showSearch
+                        if (!showSearch) {
+                            matchRectsByPage = emptyMap()
+                            matches = emptyList()
+                            pdfView?.invalidate()
+                        }
+                    }) { Icon(Icons.Filled.Search, "Search") }
                     IconButton(onClick = { night = !night }) {
                         Icon(if (night) Icons.Filled.LightMode else Icons.Filled.DarkMode, "Night mode")
                     }
@@ -115,6 +144,14 @@ fun ReaderScreen(
                     Box {
                         IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, "More") }
                         DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                            DropdownMenuItem(
+                                text = { Text(if (isVertical) "Switch to Horizontal Swipe" else "Switch to Vertical Scroll") },
+                                onClick = {
+                                    menu = false
+                                    isVertical = !isVertical
+                                    onToggleVerticalScroll(isVertical)
+                                }
+                            )
                             DropdownMenuItem(text = { Text("Share") }, onClick = {
                                 menu = false; SharePrint.shareContentUri(context, uri)
                             })
@@ -193,22 +230,60 @@ fun ReaderScreen(
             }
 
             Box(Modifier.weight(1f).fillMaxWidth()) {
-                // Recreate the view when night mode or scroll direction changes.
-                key(night, verticalScroll, uri) {
+                val fillPaint = remember {
+                    APaint(APaint.ANTI_ALIAS_FLAG).apply {
+                        style = APaint.Style.FILL
+                        color = android.graphics.Color.argb(95, 255, 235, 59)
+                    }
+                }
+                val strokePaint = remember {
+                    APaint(APaint.ANTI_ALIAS_FLAG).apply {
+                        style = APaint.Style.STROKE
+                        strokeWidth = 2.5f
+                        color = android.graphics.Color.argb(210, 255, 152, 0)
+                    }
+                }
+
+                // Recreate the view when night mode, scroll direction, URI, or password changes.
+                key(night, isVertical, uri, pdfPassword) {
                     AndroidView(
                         modifier = Modifier.fillMaxSize(),
                         factory = { ctx ->
                             PDFView(ctx, null).also { v ->
                                 pdfView = v
                                 v.fromUri(uri)
+                                    .password(pdfPassword)
                                     .defaultPage(page)
-                                    .swipeHorizontal(!verticalScroll)
+                                    .swipeHorizontal(!isVertical)
                                     .enableSwipe(true)
                                     .enableDoubletap(true)
                                     .nightMode(night)
                                     .spacing(8)
+                                    .onDraw { canvas, pageW, pageH, displayedPage ->
+                                        val rects = matchRectsByPage[displayedPage]
+                                        if (showSearch && !rects.isNullOrEmpty()) {
+                                            for (r in rects) {
+                                                val rf = RectF(
+                                                    r.left * pageW,
+                                                    r.top * pageH,
+                                                    r.right * pageW,
+                                                    r.bottom * pageH
+                                                )
+                                                canvas.drawRoundRect(rf, 4f, 4f, fillPaint)
+                                                canvas.drawRoundRect(rf, 4f, 4f, strokePaint)
+                                            }
+                                        }
+                                    }
                                     .onLoad { nb -> count = nb; onLoaded(nb) }
                                     .onPageChange { p, _ -> page = p; onPageChanged(p) }
+                                    .onError { err ->
+                                        val msg = err?.javaClass?.simpleName.orEmpty() + " " + err?.message.orEmpty()
+                                        if (msg.contains("Password", ignoreCase = true)) {
+                                            needsPassword = true
+                                        } else {
+                                            Toast.makeText(ctx, "Cannot open PDF: ${err?.message}", Toast.LENGTH_LONG).show()
+                                        }
+                                    }
                                     .load()
                             }
                         }
@@ -239,5 +314,34 @@ fun ReaderScreen(
                 }
             }
         }
+    }
+
+    if (needsPassword) {
+        AlertDialog(
+            onDismissRequest = { needsPassword = false; onBack() },
+            title = { Text("Password-protected PDF") },
+            text = {
+                Column {
+                    Text("Enter the password to open this PDF:")
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = passwordInput,
+                        onValueChange = { passwordInput = it },
+                        label = { Text("Password") },
+                        singleLine = true,
+                        visualTransformation = PasswordVisualTransformation()
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    needsPassword = false
+                    pdfPassword = passwordInput
+                }) { Text("Unlock") }
+            },
+            dismissButton = {
+                TextButton(onClick = { needsPassword = false; onBack() }) { Text("Cancel") }
+            }
+        )
     }
 }

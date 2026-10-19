@@ -2,7 +2,6 @@ plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
-    id("com.google.devtools.ksp")
 }
 
 // Apply Firebase's google-services plugin only when the config file is present,
@@ -22,6 +21,11 @@ android {
         // CI injects APP_VERSION_CODE (GitHub run number) so each release is newer; local defaults to 1.
         versionCode = (System.getenv("APP_VERSION_CODE") ?: "1").toInt()
         versionName = System.getenv("APP_VERSION_NAME") ?: "1.0.${(System.getenv("APP_VERSION_CODE") ?: "1")}"
+
+        // Strip x86/x86_64 emulator binaries from Tesseract/Pdfium/ML Kit to shrink the universal ARM phone APK.
+        ndk {
+            abiFilters += listOf("arm64-v8a", "armeabi-v7a")
+        }
     }
 
     // Release signing — reads the keystore from env vars (set by CI from GitHub
@@ -61,6 +65,10 @@ android {
         compose = true
         buildConfig = true
     }
+
+    testOptions {
+        unitTests.isReturnDefaultValues = true
+    }
 }
 
 dependencies {
@@ -78,18 +86,13 @@ dependencies {
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("androidx.core:core-splashscreen:1.0.1")
 
-    // --- Urdu / nastaliq OCR (needs urd.traineddata in assets/tessdata) ---
+    // --- Urdu / nastaliq OCR (uses urd.traineddata + eng.traineddata in assets/tessdata) ---
     implementation("cz.adaptech.tesseract4android:tesseract4android:4.7.0")
 
     // --- Printing (CNIC duplex / collage straight to printer) ---
     implementation("androidx.print:print:1.0.0")
 
-    // --- Room (local cache; kept for offline device storage) ---
-    implementation("androidx.room:room-runtime:2.6.1")
-    implementation("androidx.room:room-ktx:2.6.1")
-    ksp("androidx.room:room-compiler:2.6.1")
-
-    // --- Firebase: Auth (login) + Firestore (per-user cloud data) ---
+    // --- Firebase: Auth (login) + Firestore (per-user cloud data with offline persistence) ---
     implementation(platform("com.google.firebase:firebase-bom:33.5.1"))
     implementation("com.google.firebase:firebase-auth")
     implementation("com.google.firebase:firebase-firestore")
@@ -101,12 +104,14 @@ dependencies {
     implementation("com.google.android.gms:play-services-mlkit-document-scanner:16.0.0-beta1")
 
     // --- Reader engine: Pdfium-backed view (zoom, night mode, page slider) ---
-    // Maintained fork of barteksc; same `com.github.barteksc.pdfviewer` package, resolvable on JitPack.
     implementation("com.github.mhiew:android-pdf-viewer:3.2.0-beta.3")
 
-    // --- Text extraction for search (Apache 2.0) ---
+    // --- Text extraction for search & PDF manipulation (Apache 2.0) ---
     implementation("com.tom-roush:pdfbox-android:2.0.27.0")
 
     // --- OCR (on-device, free) ---
     implementation("com.google.mlkit:text-recognition:16.0.1")
+
+    // --- Unit testing ---
+    testImplementation("junit:junit:4.13.2")
 }

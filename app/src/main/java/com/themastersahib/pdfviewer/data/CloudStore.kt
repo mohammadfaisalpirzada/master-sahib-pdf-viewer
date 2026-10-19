@@ -23,6 +23,8 @@ object CloudStore {
     private fun docId(uri: String): String =
         Base64.encodeToString(uri.toByteArray(), Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING)
 
+    private fun bookmarkDocId(uri: String, page: Int): String = "${docId(uri)}_p$page"
+
     suspend fun getRecents(uid: String): List<RecentFile> =
         recents(uid).orderBy("lastOpened", Query.Direction.DESCENDING).limit(100).get().await()
             .documents.mapNotNull { d ->
@@ -58,7 +60,7 @@ object CloudStore {
             .documents.mapNotNull { d ->
                 val uri = d.getString("uri") ?: return@mapNotNull null
                 Bookmark(
-                    id = 0,
+                    id = d.id.hashCode().toLong(),
                     uri = uri,
                     name = d.getString("name") ?: uri,
                     page = (d.getLong("page") ?: 0L).toInt(),
@@ -67,8 +69,21 @@ object CloudStore {
             }
 
     suspend fun addBookmark(uid: String, b: Bookmark) {
-        bookmarks(uid).add(
-            mapOf("uri" to b.uri, "name" to b.name, "page" to b.page, "createdAt" to b.createdAt)
+        bookmarks(uid).document(bookmarkDocId(b.uri, b.page)).set(
+            mapOf("uri" to b.uri, "name" to b.name, "page" to b.page, "createdAt" to b.createdAt),
+            SetOptions.merge()
         ).await()
+    }
+
+    suspend fun deleteBookmark(uid: String, b: Bookmark) {
+        bookmarks(uid).document(bookmarkDocId(b.uri, b.page)).delete().await()
+        // Also clean up any legacy random-ID bookmark matching (uri, page)
+        val legacy = bookmarks(uid)
+            .whereEqualTo("uri", b.uri)
+            .whereEqualTo("page", b.page)
+            .get().await()
+        for (doc in legacy.documents) {
+            doc.reference.delete().await()
+        }
     }
 }

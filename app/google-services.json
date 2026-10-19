@@ -15,6 +15,22 @@
       },
       "oauth_client": [
         {
+          "client_id": "900136320125-59vav6r7sskm6a2u64c9k65nqg6dbnca.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.themastersahib.pdfviewer",
+            "certificate_hash": "bdd16077c6cdaad0c27b713bb46d5d1cbae0e56c"
+          }
+        },
+        {
+          "client_id": "900136320125-gmircduesjn8agootsrcsesr8ena7c9p.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.themastersahib.pdfviewer",
+            "certificate_hash": "5b813a06c34cadf45d86cc81169f25fb5f0c8ab0"
+          }
+        },
+        {
           "client_id": "900136320125-973vld6568p26d6bu7vorh0rjoo0dcio.apps.googleusercontent.com",
           "client_type": 3
         }

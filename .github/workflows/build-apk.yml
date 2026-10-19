@@ -35,6 +35,9 @@ jobs:
         with:
           gradle-version: "8.9"
 
+      - name: Run Unit Tests
+        run: gradle testDebugUnitTest --no-daemon
+
       - name: Decode keystore (if configured)
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
@@ -76,6 +79,7 @@ jobs:
           [ -z "$F" ] && F=$(ls app/build/outputs/apk/debug/*.apk 2>/dev/null | head -1 || true)
           echo "Found: $F"
           cp "$F" "Master-Sahib-PDF-Viewer.apk"
+          ls -lh "Master-Sahib-PDF-Viewer.apk"
 
       - name: Verify signing
         run: |

@@ -4,6 +4,7 @@ import android.app.Activity
 import android.content.Intent
 import android.graphics.Bitmap
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
@@ -19,7 +20,6 @@ import com.google.mlkit.vision.documentscanner.GmsDocumentScannerOptions
 import com.google.mlkit.vision.documentscanner.GmsDocumentScanning
 import com.google.mlkit.vision.documentscanner.GmsDocumentScanningResult
 import com.themastersahib.pdfviewer.core.BitmapIO
-import com.themastersahib.pdfviewer.core.FileExport
 import com.themastersahib.pdfviewer.core.Orientation
 import com.themastersahib.pdfviewer.core.PdfTools
 import com.themastersahib.pdfviewer.core.UpdateChecker
@@ -44,8 +44,24 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         installSplashScreen()
         super.onCreate(savedInstanceState)
-        val incoming: Uri? = if (intent?.action == Intent.ACTION_VIEW) intent.data else null
+        val incoming: Uri? = extractIncomingPdfUri(intent)
         setContent { AppRoot(incomingPdf = incoming) }
+    }
+
+    private fun extractIncomingPdfUri(intent: Intent?): Uri? {
+        if (intent == null) return null
+        return when (intent.action) {
+            Intent.ACTION_VIEW -> intent.data
+            Intent.ACTION_SEND -> {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    intent.getParcelableExtra(Intent.EXTRA_STREAM, Uri::class.java)
+                } else {
+                    @Suppress("DEPRECATION")
+                    intent.getParcelableExtra(Intent.EXTRA_STREAM) as? Uri
+                } ?: intent.clipData?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.uri
+            }
+            else -> null
+        }
     }
 }
 
@@ -185,7 +201,6 @@ fun AppRoot(incomingPdf: Uri?) {
             val uris = scan?.pages?.mapNotNull { it.imageUri } ?: emptyList()
             scope.launch {
                 val decoded = withContext(Dispatchers.IO) { uris.mapNotNull { BitmapIO.decode(context, it) } }
-                // Append when already reviewing a scan ("Add Pages"), else start fresh.
                 scannedPages = if (screen == Screen.SCAN_REVIEW) scannedPages + decoded else decoded
                 if (scannedPages.isNotEmpty()) screen = Screen.SCAN_REVIEW
             }
@@ -208,8 +223,6 @@ fun AppRoot(incomingPdf: Uri?) {
             .addOnFailureListener { Toast.makeText(context, "Scanner unavailable: ${it.message}", Toast.LENGTH_LONG).show() }
     }
 
-    // Step 2 of merge: user picks the output name + location (Android Save dialog),
-    // then we merge and write the result there and open it.
     val createMergeDoc = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("application/pdf")
     ) { outUri ->
@@ -237,7 +250,6 @@ fun AppRoot(incomingPdf: Uri?) {
         }
     }
 
-    // Step 1 of merge: pick 2+ PDFs, then ask for name + location.
     val mergePdfs = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
         when {
             uris.size >= 2 -> {
@@ -257,7 +269,7 @@ fun AppRoot(incomingPdf: Uri?) {
                 bookmarks = bookmarks,
                 darkMode = darkMode,
                 onToggleDark = { darkMode = it; settings.darkMode = it },
-                onLogout = { Auth.signOut(); recents = emptyList(); bookmarks = emptyList(); uid = null },
+                onLogout = { Auth.signOut(context); recents = emptyList(); bookmarks = emptyList(); uid = null },
                 onPickPdf = { openPdf.launch(arrayOf("application/pdf")) },
                 onScan = { launchScanner() },
                 onMerge = { mergePdfs.launch(arrayOf("application/pdf")) },
@@ -265,6 +277,9 @@ fun AppRoot(incomingPdf: Uri?) {
                 onOpenBookmark = { loadPdf(Uri.parse(it.uri), it.page) },
                 onDeleteRecent = { r ->
                     scope.launch { runCatching { withContext(Dispatchers.IO) { CloudStore.deleteRecent(userId, r.uri) } }; refreshLists() }
+                },
+                onDeleteBookmark = { b ->
+                    scope.launch { runCatching { withContext(Dispatchers.IO) { CloudStore.deleteBookmark(userId, b) } }; refreshLists() }
                 }
             )
 
@@ -278,6 +293,14 @@ fun AppRoot(incomingPdf: Uri?) {
                 onDeletePage = { i ->
                     scannedPages = scannedPages.filterIndexed { idx, _ -> idx != i }
                     if (scannedPages.isEmpty()) screen = Screen.HOME
+                },
+                onMovePage = { from, to ->
+                    if (from in scannedPages.indices && to in scannedPages.indices) {
+                        scannedPages = scannedPages.toMutableList().also {
+                            val item = it.removeAt(from)
+                            it.add(to, item)
+                        }
+                    }
                 }
             )
 
@@ -297,6 +320,7 @@ fun AppRoot(incomingPdf: Uri?) {
                     name = pdfName,
                     initialPage = startPage,
                     verticalScroll = settings.verticalScroll,
+                    onToggleVerticalScroll = { settings.verticalScroll = it },
                     onBack = { saveLastPage(); screen = Screen.HOME },
                     onLoaded = { c -> pageCount = c; recordRecent(c) },
                     onPageChanged = { currentPage = it },
