@@ -84,6 +84,7 @@ fun AppRoot(incomingPdf: Uri?) {
     var scannedPages by remember { mutableStateOf<List<Bitmap>>(emptyList()) }
     var annotPage by remember { mutableStateOf<Bitmap?>(null) }
     var annotSourcePage by remember { mutableIntStateOf(0) }
+    var pendingMergeUris by remember { mutableStateOf<List<Uri>>(emptyList()) }
 
     fun refreshLists() = scope.launch {
         runCatching {
@@ -202,15 +203,41 @@ fun AppRoot(incomingPdf: Uri?) {
             .addOnFailureListener { Toast.makeText(context, "Scanner unavailable: ${it.message}", Toast.LENGTH_LONG).show() }
     }
 
+    // Step 2 of merge: user picks the output name + location (Android Save dialog),
+    // then we merge and write the result there and open it.
+    val createMergeDoc = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/pdf")
+    ) { outUri ->
+        val inputs = pendingMergeUris
+        if (outUri == null || inputs.size < 2) return@rememberLauncherForActivityResult
+        runCatching {
+            context.contentResolver.takePersistableUriPermission(
+                outUri, Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+            )
+        }
+        Toast.makeText(context, "Merging ${inputs.size} PDFs…", Toast.LENGTH_SHORT).show()
+        scope.launch {
+            val ok = withContext(Dispatchers.IO) {
+                runCatching {
+                    val f = PdfTools.merge(context, inputs)
+                    context.contentResolver.openOutputStream(outUri)?.use { out ->
+                        f.inputStream().use { it.copyTo(out) }
+                    }
+                    true
+                }.getOrDefault(false)
+            }
+            pendingMergeUris = emptyList()
+            if (ok) { Toast.makeText(context, "Merged PDF saved", Toast.LENGTH_SHORT).show(); loadPdf(outUri) }
+            else Toast.makeText(context, "Merge failed", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    // Step 1 of merge: pick 2+ PDFs, then ask for name + location.
     val mergePdfs = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
         when {
-            uris.size >= 2 -> scope.launch {
-                val msg = withContext(Dispatchers.IO) {
-                    val f = PdfTools.merge(context, uris)
-                    if (FileExport.savePdfToDownloads(context, f, "merged_${System.currentTimeMillis()}.pdf") != null)
-                        "Merged ${uris.size} PDFs → Downloads ▸ Master Sahib PDF" else "Merge failed"
-                }
-                Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+            uris.size >= 2 -> {
+                pendingMergeUris = uris
+                createMergeDoc.launch("Photostat_Merged_${System.currentTimeMillis()}.pdf")
             }
             uris.isNotEmpty() -> Toast.makeText(context, "Pick at least 2 PDFs", Toast.LENGTH_SHORT).show()
         }
