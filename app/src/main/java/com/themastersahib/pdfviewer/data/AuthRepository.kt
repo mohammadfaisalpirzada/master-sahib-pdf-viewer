@@ -1,6 +1,7 @@
 package com.themastersahib.pdfviewer.data
 
 import com.google.firebase.FirebaseApp
+import com.google.firebase.auth.AuthCredential
 import com.google.firebase.auth.FirebaseAuth
 import kotlinx.coroutines.tasks.await
 
@@ -22,6 +23,10 @@ object Auth {
 
     suspend fun signUp(email: String, password: String) {
         auth.createUserWithEmailAndPassword(email.trim(), password).await()
+    }
+
+    suspend fun signInWithCredential(cred: AuthCredential) {
+        auth.signInWithCredential(cred).await()
     }
 
     fun signOut() = auth.signOut()

@@ -94,6 +94,8 @@ dependencies {
     implementation("com.google.firebase:firebase-auth")
     implementation("com.google.firebase:firebase-firestore")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.8.1")
+    // Google Sign-In
+    implementation("com.google.android.gms:play-services-auth:21.2.0")
 
     // --- KILLER FEATURE 2: CamScanner-style document scanner (free, on-device) ---
     implementation("com.google.android.gms:play-services-mlkit-document-scanner:16.0.0-beta1")

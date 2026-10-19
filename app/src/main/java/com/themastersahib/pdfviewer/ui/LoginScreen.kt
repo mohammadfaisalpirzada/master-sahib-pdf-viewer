@@ -1,7 +1,15 @@
 package com.themastersahib.pdfviewer.ui
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.platform.LocalContext
+import com.google.android.gms.auth.api.signin.GoogleSignIn
+import com.google.android.gms.auth.api.signin.GoogleSignInOptions
+import com.google.android.gms.common.api.ApiException
+import com.google.firebase.auth.GoogleAuthProvider
+import com.themastersahib.pdfviewer.R
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PictureAsPdf
 import androidx.compose.material.icons.filled.Visibility
@@ -28,6 +36,29 @@ fun LoginScreen(onLoggedIn: () -> Unit) {
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var showPw by remember { mutableStateOf(false) }
+
+    val context = LocalContext.current
+    val googleClient = remember {
+        val gso = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
+            .requestIdToken(context.getString(R.string.default_web_client_id))
+            .requestEmail().build()
+        GoogleSignIn.getClient(context, gso)
+    }
+    val googleLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        busy = true; error = null
+        scope.launch {
+            try {
+                val account = GoogleSignIn.getSignedInAccountFromIntent(result.data)
+                    .getResult(ApiException::class.java)
+                Auth.signInWithCredential(GoogleAuthProvider.getCredential(account.idToken, null))
+                onLoggedIn()
+            } catch (e: Exception) {
+                error = "Google sign-in failed: ${e.message}"
+            } finally { busy = false }
+        }
+    }
 
     fun submit() {
         if (email.isBlank() || password.length < 6) {
@@ -99,6 +130,14 @@ fun LoginScreen(onLoggedIn: () -> Unit) {
             TextButton(onClick = { isSignUp = !isSignUp; error = null }, enabled = !busy) {
                 Text(if (isSignUp) "Already have an account? Sign In" else "New here? Create an account")
             }
+
+            Spacer(Modifier.height(8.dp))
+            Text("or", style = MaterialTheme.typography.labelMedium)
+            Spacer(Modifier.height(8.dp))
+            OutlinedButton(
+                onClick = { error = null; googleLauncher.launch(googleClient.signInIntent) },
+                enabled = !busy, modifier = Modifier.fillMaxWidth()
+            ) { Text("Continue with Google") }
         }
     }
 }
