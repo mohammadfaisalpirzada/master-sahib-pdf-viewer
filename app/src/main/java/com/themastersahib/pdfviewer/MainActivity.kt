@@ -337,6 +337,18 @@ fun AppRoot(incomingPdf: Uri?) {
                 onRotatePage = { i ->
                     scannedPages = scannedPages.toMutableList().also { it[i] = Orientation.rotate(it[i], 90f) }
                 },
+                onFineRotatePage = { i, deg ->
+                    scannedPages = scannedPages.toMutableList().also { it[i] = Orientation.rotate(it[i], deg) }
+                },
+                onAutoStraightenAll = {
+                    scope.launch {
+                        val straightened = withContext(Dispatchers.IO) {
+                            scannedPages.map { Orientation.autoDeskew(it) }
+                        }
+                        scannedPages = straightened
+                        Toast.makeText(context, "Pages straightened", Toast.LENGTH_SHORT).show()
+                    }
+                },
                 onDeletePage = { i ->
                     scannedPages = scannedPages.filterIndexed { idx, _ -> idx != i }
                     if (scannedPages.isEmpty()) screen = Screen.HOME

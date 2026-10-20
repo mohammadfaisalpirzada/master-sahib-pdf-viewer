@@ -55,6 +55,8 @@ fun ScanExportScreen(
     onBack: () -> Unit,
     onAddPages: () -> Unit = {},
     onRotatePage: (Int) -> Unit = {},
+    onFineRotatePage: (Int, Float) -> Unit = { _, _ -> },
+    onAutoStraightenAll: () -> Unit = {},
     onDeletePage: (Int) -> Unit = {},
     onMovePage: (Int, Int) -> Unit = { _, _ -> },
     initialFilter: FilterType = FilterType.NONE
@@ -108,10 +110,15 @@ fun ScanExportScreen(
                     }
                 },
                 actions = {
+                    TextButton(enabled = !busy, onClick = onAutoStraightenAll) {
+                        Icon(Icons.Filled.Straighten, null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text("Straighten", fontSize = 12.sp)
+                    }
                     TextButton(enabled = !busy, onClick = onAddPages) {
                         Icon(Icons.Filled.AddAPhoto, null, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(4.dp))
-                        Text("Add Page", fontSize = 12.sp)
+                        Text("Add", fontSize = 12.sp)
                     }
                 }
             )
@@ -268,44 +275,61 @@ fun ScanExportScreen(
                                     .background(Color.White)
                             )
 
-                            // Compact bottom toolbar: Move Left, Move Right, Rotate, Delete
+                            // Compact bottom toolbar: -1°, +1°, Rotate 90°, Move, Delete
                             Row(
                                 Modifier
                                     .fillMaxWidth()
                                     .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
-                                    .padding(horizontal = 4.dp, vertical = 2.dp),
+                                    .padding(horizontal = 2.dp, vertical = 2.dp),
                                 horizontalArrangement = Arrangement.SpaceEvenly,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                IconButton(
-                                    onClick = { if (idx > 0) onMovePage(idx, idx - 1) },
-                                    enabled = idx > 0,
-                                    modifier = Modifier.size(28.dp)
-                                ) {
-                                    Icon(Icons.Filled.ArrowBackIosNew, "Move earlier", modifier = Modifier.size(14.dp))
-                                }
-                                IconButton(
-                                    onClick = { if (idx < pages.lastIndex) onMovePage(idx, idx + 1) },
-                                    enabled = idx < pages.lastIndex,
-                                    modifier = Modifier.size(28.dp)
-                                ) {
-                                    Icon(Icons.Filled.ArrowForwardIos, "Move later", modifier = Modifier.size(14.dp))
-                                }
+                                Text(
+                                    text = "-1°",
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = ScanAccentPurple,
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .clickable { onFineRotatePage(idx, -1f) }
+                                        .padding(horizontal = 5.dp, vertical = 4.dp)
+                                )
+                                Text(
+                                    text = "+1°",
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = ScanAccentPurple,
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .clickable { onFineRotatePage(idx, 1f) }
+                                        .padding(horizontal = 5.dp, vertical = 4.dp)
+                                )
                                 IconButton(
                                     onClick = { onRotatePage(idx) },
-                                    modifier = Modifier.size(28.dp)
+                                    modifier = Modifier.size(26.dp)
                                 ) {
-                                    Icon(Icons.Filled.RotateRight, "Rotate", modifier = Modifier.size(16.dp))
+                                    Icon(Icons.Filled.RotateRight, "Rotate 90°", modifier = Modifier.size(15.dp))
+                                }
+                                if (pages.size > 1) {
+                                    IconButton(
+                                        onClick = {
+                                            if (idx < pages.lastIndex) onMovePage(idx, idx + 1)
+                                            else if (idx > 0) onMovePage(idx, idx - 1)
+                                        },
+                                        modifier = Modifier.size(26.dp)
+                                    ) {
+                                        Icon(Icons.Filled.SwapHoriz, "Reorder", modifier = Modifier.size(15.dp))
+                                    }
                                 }
                                 IconButton(
                                     onClick = { onDeletePage(idx) },
-                                    modifier = Modifier.size(28.dp)
+                                    modifier = Modifier.size(26.dp)
                                 ) {
                                     Icon(
                                         Icons.Filled.Delete,
                                         "Delete",
                                         tint = MaterialTheme.colorScheme.error,
-                                        modifier = Modifier.size(16.dp)
+                                        modifier = Modifier.size(15.dp)
                                     )
                                 }
                             }

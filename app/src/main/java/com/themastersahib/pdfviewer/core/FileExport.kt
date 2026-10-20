@@ -4,16 +4,33 @@ import android.content.ContentValues
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.media.ExifInterface
 import android.net.Uri
 import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
 import java.io.File
 
-/** Decode a content/file Uri (e.g. a scanned page) into a Bitmap. */
+/** Decode a content/file Uri (e.g. a scanned page) into a straightened, EXIF-corrected Bitmap. */
 object BitmapIO {
-    fun decode(context: Context, uri: Uri): Bitmap? =
-        context.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it) }
+    fun decode(context: Context, uri: Uri, autoStraighten: Boolean = true): Bitmap? {
+        val exifDegrees = runCatching {
+            context.contentResolver.openInputStream(uri)?.use { stream ->
+                val exif = ExifInterface(stream)
+                when (exif.getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL)) {
+                    ExifInterface.ORIENTATION_ROTATE_90 -> 90f
+                    ExifInterface.ORIENTATION_ROTATE_180 -> 180f
+                    ExifInterface.ORIENTATION_ROTATE_270 -> 270f
+                    else -> 0f
+                }
+            } ?: 0f
+        }.getOrDefault(0f)
+
+        val raw = context.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it) }
+            ?: return null
+        val exifFixed = if (exifDegrees != 0f) Orientation.rotate(raw, exifDegrees) else raw
+        return if (autoStraighten) Orientation.autoDeskew(exifFixed) else exifFixed
+    }
 }
 
 /** Save finished PDFs to the public Downloads folder (or app dir pre-Android 10). */
@@ -24,15 +41,18 @@ object FileExport {
             val values = ContentValues().apply {
                 put(MediaStore.Downloads.DISPLAY_NAME, displayName)
                 put(MediaStore.Downloads.MIME_TYPE, "application/pdf")
-                put(MediaStore.Downloads.RELATIVE_PATH,
-                    "${Environment.DIRECTORY_DOWNLOADS}/Master Sahib PDF")
+                put(
+                    MediaStore.Downloads.RELATIVE_PATH,
+                    "${Environment.DIRECTORY_DOWNLOADS}/Master Sahib PDF"
+                )
                 put(MediaStore.Downloads.IS_PENDING, 1)
             }
             val resolver = context.contentResolver
             val collection = MediaStore.Downloads.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
             val uri = resolver.insert(collection, values) ?: return null
             resolver.openOutputStream(uri)?.use { out -> pdf.inputStream().use { it.copyTo(out) } }
-            values.clear(); values.put(MediaStore.Downloads.IS_PENDING, 0)
+            values.clear()
+            values.put(MediaStore.Downloads.IS_PENDING, 0)
             resolver.update(uri, values, null, null)
             return uri
         } else {
@@ -51,15 +71,18 @@ object FileExport {
             val values = ContentValues().apply {
                 put(MediaStore.Downloads.DISPLAY_NAME, displayName)
                 put(MediaStore.Downloads.MIME_TYPE, "text/plain")
-                put(MediaStore.Downloads.RELATIVE_PATH,
-                    "${Environment.DIRECTORY_DOWNLOADS}/Master Sahib PDF")
+                put(
+                    MediaStore.Downloads.RELATIVE_PATH,
+                    "${Environment.DIRECTORY_DOWNLOADS}/Master Sahib PDF"
+                )
                 put(MediaStore.Downloads.IS_PENDING, 1)
             }
             val resolver = context.contentResolver
             val collection = MediaStore.Downloads.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
             val uri = resolver.insert(collection, values) ?: return null
             resolver.openOutputStream(uri)?.use { it.write(text.toByteArray()) }
-            values.clear(); values.put(MediaStore.Downloads.IS_PENDING, 0)
+            values.clear()
+            values.put(MediaStore.Downloads.IS_PENDING, 0)
             resolver.update(uri, values, null, null)
             return uri
         } else {
