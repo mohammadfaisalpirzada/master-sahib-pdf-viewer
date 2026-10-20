@@ -48,12 +48,13 @@ fun ScanExportScreen(
     onAddPages: () -> Unit = {},
     onRotatePage: (Int) -> Unit = {},
     onDeletePage: (Int) -> Unit = {},
-    onMovePage: (Int, Int) -> Unit = { _, _ -> }
+    onMovePage: (Int, Int) -> Unit = { _, _ -> },
+    initialFilter: FilterType = FilterType.NONE
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
-    var bulkFilter by remember { mutableStateOf(FilterType.NONE) }
+    var bulkFilter by remember(initialFilter) { mutableStateOf(initialFilter) }
     var perPageOverrides by remember { mutableStateOf<Map<Int, FilterType>>(emptyMap()) }
     var selectedPaper by remember { mutableStateOf(PaperSize.A4) }
     var selectedDpi by remember { mutableIntStateOf(200) }

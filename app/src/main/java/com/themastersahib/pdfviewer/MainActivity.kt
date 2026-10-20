@@ -20,6 +20,7 @@ import com.google.mlkit.vision.documentscanner.GmsDocumentScannerOptions
 import com.google.mlkit.vision.documentscanner.GmsDocumentScanning
 import com.google.mlkit.vision.documentscanner.GmsDocumentScanningResult
 import com.themastersahib.pdfviewer.core.BitmapIO
+import com.themastersahib.pdfviewer.core.FilterType
 import com.themastersahib.pdfviewer.core.Orientation
 import com.themastersahib.pdfviewer.core.PdfTools
 import com.themastersahib.pdfviewer.core.UpdateChecker
@@ -74,19 +75,35 @@ fun AppRoot(incomingPdf: Uri?) {
     val scope = rememberCoroutineScope()
     val settings = remember { SettingsStore(context) }
 
-    // --- Auth gate ---
+    // --- Auth & Guest gate ---
     val configured = remember { Auth.isConfigured() }
     var uid by remember { mutableStateOf(Auth.uid) }
+    var guestMode by remember { mutableStateOf(false) }
+    var showLoginScreen by remember { mutableStateOf(false) }
+
     val colorsEarly = if (settings.darkMode) darkColorScheme() else lightColorScheme()
     if (!configured) {
         MaterialTheme(colorScheme = colorsEarly) { FirebaseSetupNeededScreen() }
         return
     }
-    if (uid == null) {
-        MaterialTheme(colorScheme = colorsEarly) { LoginScreen(onLoggedIn = { uid = Auth.uid }) }
+    if ((uid == null && !guestMode) || showLoginScreen) {
+        MaterialTheme(colorScheme = colorsEarly) {
+            LoginScreen(
+                onLoggedIn = {
+                    uid = Auth.uid
+                    guestMode = false
+                    showLoginScreen = false
+                },
+                onContinueAsGuest = {
+                    guestMode = true
+                    showLoginScreen = false
+                }
+            )
+        }
         return
     }
-    val userId = uid!!
+    val userId = uid
+    val userProfile = remember(uid) { Auth.currentProfile() }
 
     var darkMode by remember { mutableStateOf(settings.darkMode) }
     var screen by remember { mutableStateOf(Screen.HOME) }
@@ -100,6 +117,7 @@ fun AppRoot(incomingPdf: Uri?) {
     var recents by remember { mutableStateOf<List<RecentFile>>(emptyList()) }
     var bookmarks by remember { mutableStateOf<List<Bookmark>>(emptyList()) }
     var scannedPages by remember { mutableStateOf<List<Bitmap>>(emptyList()) }
+    var scanInitialFilter by remember { mutableStateOf(FilterType.NONE) }
     var annotPage by remember { mutableStateOf<Bitmap?>(null) }
     var annotSourcePage by remember { mutableIntStateOf(0) }
     var pendingMergeUris by remember { mutableStateOf<List<Uri>>(emptyList()) }
@@ -107,9 +125,10 @@ fun AppRoot(incomingPdf: Uri?) {
     var updating by remember { mutableStateOf(false) }
 
     fun refreshLists() = scope.launch {
+        val activeUid = userId ?: return@launch
         runCatching {
-            recents = withContext(Dispatchers.IO) { CloudStore.getRecents(userId) }
-            bookmarks = withContext(Dispatchers.IO) { CloudStore.getBookmarks(userId) }
+            recents = withContext(Dispatchers.IO) { CloudStore.getRecents(activeUid) }
+            bookmarks = withContext(Dispatchers.IO) { CloudStore.getBookmarks(activeUid) }
         }
     }
 
@@ -130,10 +149,11 @@ fun AppRoot(incomingPdf: Uri?) {
 
     fun recordRecent(count: Int) {
         val uri = pdfUri ?: return
+        val activeUid = userId ?: return
         scope.launch(Dispatchers.IO) {
             runCatching {
                 CloudStore.upsertRecent(
-                    userId,
+                    activeUid,
                     RecentFile(
                         uri = uri.toString(), name = pdfName,
                         lastOpened = System.currentTimeMillis(),
@@ -146,14 +166,23 @@ fun AppRoot(incomingPdf: Uri?) {
 
     fun saveLastPage() {
         val uri = pdfUri ?: return
-        scope.launch(Dispatchers.IO) { runCatching { CloudStore.updateLastPage(userId, uri.toString(), currentPage) } }
+        val activeUid = userId ?: return
+        scope.launch(Dispatchers.IO) {
+            runCatching { CloudStore.updateLastPage(activeUid, uri.toString(), currentPage) }
+        }
     }
 
     fun addBookmark(page: Int) {
         val uri = pdfUri ?: return
-        scope.launch(Dispatchers.IO) {
-            runCatching {
-                CloudStore.addBookmark(userId, Bookmark(uri = uri.toString(), name = pdfName, page = page, createdAt = System.currentTimeMillis()))
+        val activeUid = userId
+        if (activeUid != null) {
+            scope.launch(Dispatchers.IO) {
+                runCatching {
+                    CloudStore.addBookmark(
+                        activeUid,
+                        Bookmark(uri = uri.toString(), name = pdfName, page = page, createdAt = System.currentTimeMillis())
+                    )
+                }
             }
         }
         Toast.makeText(context, "Bookmarked page ${page + 1}", Toast.LENGTH_SHORT).show()
@@ -181,7 +210,7 @@ fun AppRoot(incomingPdf: Uri?) {
     }
 
     LaunchedEffect(incomingPdf) { incomingPdf?.let { loadPdf(it) } }
-    LaunchedEffect(screen) { if (screen == Screen.HOME) refreshLists() }
+    LaunchedEffect(screen, userId) { if (screen == Screen.HOME) refreshLists() }
     LaunchedEffect(Unit) { runCatching { update = UpdateChecker.check() } }
 
     val openPdf = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -207,7 +236,8 @@ fun AppRoot(incomingPdf: Uri?) {
         }
     }
 
-    fun launchScanner() {
+    fun launchScanner(defaultFilter: FilterType = FilterType.NONE) {
+        scanInitialFilter = defaultFilter
         val options = GmsDocumentScannerOptions.Builder()
             .setGalleryImportAllowed(true)
             .setPageLimit(50)
@@ -268,25 +298,42 @@ fun AppRoot(incomingPdf: Uri?) {
                 recents = recents,
                 bookmarks = bookmarks,
                 darkMode = darkMode,
+                userProfile = userProfile,
                 onToggleDark = { darkMode = it; settings.darkMode = it },
-                onLogout = { Auth.signOut(context); recents = emptyList(); bookmarks = emptyList(); uid = null },
+                onLogout = {
+                    Auth.signOut(context)
+                    recents = emptyList()
+                    bookmarks = emptyList()
+                    uid = null
+                    guestMode = true
+                },
+                onRequestLogin = { showLoginScreen = true },
                 onPickPdf = { openPdf.launch(arrayOf("application/pdf")) },
-                onScan = { launchScanner() },
+                onScan = { launchScanner(FilterType.NONE) },
+                onReadyPhotostat = { launchScanner(FilterType.BW_PRINT) },
                 onMerge = { mergePdfs.launch(arrayOf("application/pdf")) },
                 onOpenRecent = { loadPdf(Uri.parse(it.uri), it.lastPage) },
                 onOpenBookmark = { loadPdf(Uri.parse(it.uri), it.page) },
                 onDeleteRecent = { r ->
-                    scope.launch { runCatching { withContext(Dispatchers.IO) { CloudStore.deleteRecent(userId, r.uri) } }; refreshLists() }
+                    val activeUid = userId ?: return@HomeScreen
+                    scope.launch { runCatching { withContext(Dispatchers.IO) { CloudStore.deleteRecent(activeUid, r.uri) } }; refreshLists() }
                 },
                 onDeleteBookmark = { b ->
-                    scope.launch { runCatching { withContext(Dispatchers.IO) { CloudStore.deleteBookmark(userId, b) } }; refreshLists() }
+                    val activeUid = userId ?: return@HomeScreen
+                    scope.launch { runCatching { withContext(Dispatchers.IO) { CloudStore.deleteBookmark(activeUid, b) } }; refreshLists() }
+                },
+                onOpenUri = { loadPdf(it) },
+                onSendBitmapsToScanReview = { bitmaps, filter ->
+                    scannedPages = bitmaps
+                    scanInitialFilter = filter
+                    screen = Screen.SCAN_REVIEW
                 }
             )
 
             Screen.SCAN_REVIEW -> ScanExportScreen(
                 rawPages = scannedPages,
                 onBack = { screen = Screen.HOME },
-                onAddPages = { launchScanner() },
+                onAddPages = { launchScanner(scanInitialFilter) },
                 onRotatePage = { i ->
                     scannedPages = scannedPages.toMutableList().also { it[i] = Orientation.rotate(it[i], 90f) }
                 },
@@ -301,7 +348,8 @@ fun AppRoot(incomingPdf: Uri?) {
                             it.add(to, item)
                         }
                     }
-                }
+                },
+                initialFilter = scanInitialFilter
             )
 
             Screen.ANNOTATE -> {
@@ -326,7 +374,8 @@ fun AppRoot(incomingPdf: Uri?) {
                     onPageChanged = { currentPage = it },
                     onAnnotate = { annotate(it) },
                     onSaveImage = { saveImage(it) },
-                    onBookmark = { addBookmark(it) }
+                    onBookmark = { addBookmark(it) },
+                    onOpenNewUri = { newUri -> loadPdf(newUri) }
                 )
             }
         }

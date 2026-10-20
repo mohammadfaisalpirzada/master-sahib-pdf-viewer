@@ -2,7 +2,7 @@ package com.themastersahib.pdfviewer.data
 
 import android.content.Context
 
-/** User settings via SharedPreferences (dark mode, scroll direction). */
+/** User settings and per-document tags via SharedPreferences. */
 class SettingsStore(context: Context) {
     private val sp = context.getSharedPreferences("settings", Context.MODE_PRIVATE)
 
@@ -14,6 +14,13 @@ class SettingsStore(context: Context) {
     var verticalScroll: Boolean
         get() = sp.getBoolean("vertical_scroll", true)
         set(v) = sp.edit().putBoolean("vertical_scroll", v).apply()
+
+    fun getTagsForUri(uri: String): Set<String> =
+        sp.getStringSet("tags_$uri", emptySet())?.toSet() ?: emptySet()
+
+    fun setTagsForUri(uri: String, tags: Set<String>) {
+        sp.edit().putStringSet("tags_$uri", tags).apply()
+    }
 }
 
 /** Resolve a human-readable file name from a content/file Uri. */

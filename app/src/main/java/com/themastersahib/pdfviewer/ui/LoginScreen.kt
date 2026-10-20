@@ -31,7 +31,10 @@ import kotlinx.coroutines.tasks.await
 /** Email/password & Google login/sign-up. Calls [onLoggedIn] once auth succeeds. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun LoginScreen(onLoggedIn: () -> Unit) {
+fun LoginScreen(
+    onLoggedIn: () -> Unit,
+    onContinueAsGuest: (() -> Unit)? = null
+) {
     val scope = rememberCoroutineScope()
     var isSignUp by remember { mutableStateOf(false) }
     var email by remember { mutableStateOf("") }
@@ -195,6 +198,17 @@ fun LoginScreen(onLoggedIn: () -> Unit) {
                 enabled = !busy,
                 modifier = Modifier.fillMaxWidth()
             ) { Text("Continue with Google") }
+
+            if (onContinueAsGuest != null) {
+                Spacer(Modifier.height(12.dp))
+                TextButton(
+                    onClick = onContinueAsGuest,
+                    enabled = !busy,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Skip for now · Use Offline Mode")
+                }
+            }
         }
     }
 }
