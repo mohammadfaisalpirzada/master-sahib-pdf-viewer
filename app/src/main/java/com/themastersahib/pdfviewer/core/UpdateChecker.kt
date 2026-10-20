@@ -29,7 +29,7 @@ object UpdateChecker {
 
     suspend fun check(): UpdateInfo? = withContext(Dispatchers.IO) {
         runCatching {
-            val j = JSONObject(httpGet(MANIFEST_URL))
+            val j = JSONObject(httpGet("$MANIFEST_URL?t=${System.currentTimeMillis()}"))
             val info = UpdateInfo(
                 versionCode = j.getInt("versionCode"),
                 versionName = j.optString("versionName", ""),

@@ -41,6 +41,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.print.PrintHelper
+import com.themastersahib.pdfviewer.BuildConfig
 import com.themastersahib.pdfviewer.ImageSaver
 import com.themastersahib.pdfviewer.PdfRendererHelper
 import com.themastersahib.pdfviewer.core.*
@@ -1054,7 +1055,36 @@ private fun UserProfileModalSheet(
                     }
                 )
 
-                Spacer(Modifier.height(16.dp))
+                val ctx = LocalContext.current
+                val updateScope = rememberCoroutineScope()
+                var checkingUpdate by remember { mutableStateOf(false) }
+                ListItem(
+                    headlineContent = {
+                        Text(if (checkingUpdate) "Checking/Downloading Update..." else "App Version v${BuildConfig.VERSION_NAME}")
+                    },
+                    supportingContent = { Text("Tap to check for new update now") },
+                    leadingContent = { Icon(Icons.Filled.SystemUpdate, null, tint = AccentPurple) },
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(12.dp))
+                        .clickable(enabled = !checkingUpdate) {
+                            checkingUpdate = true
+                            updateScope.launch {
+                                val info = runCatching { UpdateChecker.check() }.getOrNull()
+                                if (info != null) {
+                                    Toast.makeText(ctx, "Downloading v${info.versionName}...", Toast.LENGTH_SHORT).show()
+                                    val apk = runCatching { UpdateChecker.downloadApk(ctx, info.url) }.getOrNull()
+                                    checkingUpdate = false
+                                    if (apk != null) UpdateChecker.install(ctx, apk)
+                                    else Toast.makeText(ctx, "Download failed", Toast.LENGTH_LONG).show()
+                                } else {
+                                    checkingUpdate = false
+                                    Toast.makeText(ctx, "You are on the latest version (v${BuildConfig.VERSION_NAME})", Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                        }
+                )
+
+                Spacer(Modifier.height(12.dp))
                 Button(
                     onClick = onLogout,
                     colors = ButtonDefaults.buttonColors(
@@ -1165,26 +1195,50 @@ private fun CnicMakerDialog(
                 )
                 OutlinedButton(
                     onClick = onLaunchScanner,
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Icon(Icons.Filled.DocumentScanner, null)
+                    Icon(Icons.Filled.DocumentScanner, null, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(8.dp))
-                    Text("Scan Front & Back with Camera")
+                    Text(
+                        "Scan Front & Back",
+                        maxLines = 1,
+                        softWrap = false,
+                        overflow = TextOverflow.Ellipsis
+                    )
                 }
                 HorizontalDivider()
                 Text("Or pick existing CNIC images from Gallery:", style = MaterialTheme.typography.labelMedium)
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     OutlinedButton(
                         onClick = { frontPicker.launch("image/*") },
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 10.dp),
                         modifier = Modifier.weight(1f)
                     ) {
-                        Text(if (frontBitmap != null) "Front Selected" else "1. Pick Front")
+                        Text(
+                            text = if (frontBitmap != null) "1. Front Done" else "1. Pick Front",
+                            maxLines = 1,
+                            softWrap = false,
+                            fontSize = 13.sp,
+                            textAlign = TextAlign.Center
+                        )
                     }
                     OutlinedButton(
                         onClick = { backPicker.launch("image/*") },
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 10.dp),
                         modifier = Modifier.weight(1f)
                     ) {
-                        Text(if (backBitmap != null) "Back Selected" else "2. Pick Back")
+                        Text(
+                            text = if (backBitmap != null) "2. Back Done" else "2. Pick Back",
+                            maxLines = 1,
+                            softWrap = false,
+                            fontSize = 13.sp,
+                            textAlign = TextAlign.Center
+                        )
                     }
                 }
                 Row(
@@ -1192,7 +1246,13 @@ private fun CnicMakerDialog(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text("Apply B&W Photostat Filter", style = MaterialTheme.typography.bodySmall)
+                    Text(
+                        "Apply B&W Photostat Filter",
+                        style = MaterialTheme.typography.bodySmall,
+                        maxLines = 1,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Spacer(Modifier.width(8.dp))
                     Switch(checked = bwFilter, onCheckedChange = { bwFilter = it })
                 }
                 if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
@@ -1201,6 +1261,7 @@ private fun CnicMakerDialog(
         confirmButton = {
             Button(
                 enabled = frontBitmap != null && backBitmap != null && !busy,
+                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
                 onClick = {
                     val f = frontBitmap ?: return@Button
                     val b = backBitmap ?: return@Button
@@ -1226,11 +1287,13 @@ private fun CnicMakerDialog(
                     }
                 }
             ) {
-                Text("Build & Print Sheet")
+                Text("Build & Print", maxLines = 1, softWrap = false)
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel") }
+            TextButton(onClick = onDismiss) {
+                Text("Cancel", maxLines = 1, softWrap = false)
+            }
         }
     )
 }
