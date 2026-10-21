@@ -1,7 +1,7 @@
 package com.themastersahib.pdfviewer.data
 
 /**
- * Data models for per-user recent files and bookmarks synced via CloudStore (Firestore).
+ * Data models for per-user recent files, bookmarks, and created PDF history synced via CloudStore (Firestore).
  */
 data class RecentFile(
     val uri: String,
@@ -16,5 +16,15 @@ data class Bookmark(
     val uri: String,
     val name: String,
     val page: Int,
+    val createdAt: Long
+)
+
+data class CreatedPdfRecord(
+    val id: String,
+    val uri: String,
+    val name: String,
+    val toolUsed: String,
+    val sizeBytes: Long,
+    val pageCount: Int,
     val createdAt: Long
 )

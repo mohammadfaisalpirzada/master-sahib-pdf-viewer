@@ -9,6 +9,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
+import com.themastersahib.pdfviewer.data.CloudStore
 import java.io.File
 
 /** Decode a content/file Uri (e.g. a scanned page) into a straightened, EXIF-corrected Bitmap. */
@@ -36,8 +37,13 @@ object BitmapIO {
 /** Save finished PDFs to the public Downloads folder (or app dir pre-Android 10). */
 object FileExport {
 
-    fun savePdfToDownloads(context: Context, pdf: File, displayName: String): Uri? {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+    fun savePdfToDownloads(
+        context: Context,
+        pdf: File,
+        displayName: String,
+        toolCategory: String = "Created PDF"
+    ): Uri? {
+        val savedUri = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             val values = ContentValues().apply {
                 put(MediaStore.Downloads.DISPLAY_NAME, displayName)
                 put(MediaStore.Downloads.MIME_TYPE, "application/pdf")
@@ -54,7 +60,7 @@ object FileExport {
             values.clear()
             values.put(MediaStore.Downloads.IS_PENDING, 0)
             resolver.update(uri, values, null, null)
-            return uri
+            uri
         } else {
             val dir = File(
                 Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
@@ -62,8 +68,20 @@ object FileExport {
             ).apply { mkdirs() }
             val dest = File(dir, displayName)
             pdf.copyTo(dest, overwrite = true)
-            return Uri.fromFile(dest)
+            Uri.fromFile(dest)
         }
+
+        if (savedUri != null) {
+            // Automatically record in the user's database
+            CloudStore.recordCreatedPdfAsync(
+                context = context,
+                uriString = savedUri.toString(),
+                displayName = displayName,
+                toolUsed = toolCategory,
+                sizeBytes = pdf.length()
+            )
+        }
+        return savedUri
     }
 
     fun saveTextToDownloads(context: Context, text: String, displayName: String): Uri? {

@@ -1004,6 +1004,14 @@ fun ReaderScreen(
                     val cleanName = if (name.endsWith(".pdf", true)) name else "$name.pdf"
                     saveAsLauncher.launch(cleanName)
                 }
+                MoreSheetIconRow(Icons.Filled.CloudUpload, "Save to Google Drive") {
+                    showMoreSheet = false
+                    runCatching {
+                        DriveHelper.saveUriToDrive(context, uri, name)
+                    }.onFailure {
+                        Toast.makeText(context, "Could not open Google Drive: ${it.message}", Toast.LENGTH_SHORT).show()
+                    }
+                }
                 MoreSheetIconRow(Icons.Filled.DriveFileMove, "Export PDF") {
                     showMoreSheet = false
                     showExportDialog = true

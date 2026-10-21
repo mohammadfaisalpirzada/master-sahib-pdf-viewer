@@ -28,6 +28,7 @@ import com.themastersahib.pdfviewer.core.UpdateInfo
 import com.themastersahib.pdfviewer.data.Auth
 import com.themastersahib.pdfviewer.data.Bookmark
 import com.themastersahib.pdfviewer.data.CloudStore
+import com.themastersahib.pdfviewer.data.CreatedPdfRecord
 import com.themastersahib.pdfviewer.data.RecentFile
 import com.themastersahib.pdfviewer.data.SettingsStore
 import com.themastersahib.pdfviewer.data.UriNames
@@ -116,6 +117,7 @@ fun AppRoot(incomingPdf: Uri?) {
 
     var recents by remember { mutableStateOf<List<RecentFile>>(emptyList()) }
     var bookmarks by remember { mutableStateOf<List<Bookmark>>(emptyList()) }
+    var createdPdfs by remember { mutableStateOf<List<CreatedPdfRecord>>(emptyList()) }
     var scannedPages by remember { mutableStateOf<List<Bitmap>>(emptyList()) }
     var scanInitialFilter by remember { mutableStateOf(FilterType.NONE) }
     var annotPage by remember { mutableStateOf<Bitmap?>(null) }
@@ -125,10 +127,13 @@ fun AppRoot(incomingPdf: Uri?) {
     var updating by remember { mutableStateOf(false) }
 
     fun refreshLists() = scope.launch {
-        val activeUid = userId ?: return@launch
         runCatching {
-            recents = withContext(Dispatchers.IO) { CloudStore.getRecents(activeUid) }
-            bookmarks = withContext(Dispatchers.IO) { CloudStore.getBookmarks(activeUid) }
+            val activeUid = userId
+            if (activeUid != null) {
+                recents = withContext(Dispatchers.IO) { CloudStore.getRecents(activeUid) }
+                bookmarks = withContext(Dispatchers.IO) { CloudStore.getBookmarks(activeUid) }
+            }
+            createdPdfs = withContext(Dispatchers.IO) { CloudStore.getCreatedPdfs(context, activeUid) }
         }
     }
 
@@ -297,6 +302,7 @@ fun AppRoot(incomingPdf: Uri?) {
             Screen.HOME -> HomeScreen(
                 recents = recents,
                 bookmarks = bookmarks,
+                createdPdfs = createdPdfs,
                 darkMode = darkMode,
                 userProfile = userProfile,
                 onToggleDark = { darkMode = it; settings.darkMode = it },
@@ -304,6 +310,7 @@ fun AppRoot(incomingPdf: Uri?) {
                     Auth.signOut(context)
                     recents = emptyList()
                     bookmarks = emptyList()
+                    createdPdfs = emptyList()
                     uid = null
                     guestMode = true
                 },
@@ -321,6 +328,12 @@ fun AppRoot(incomingPdf: Uri?) {
                 onDeleteBookmark = { b ->
                     val activeUid = userId ?: return@HomeScreen
                     scope.launch { runCatching { withContext(Dispatchers.IO) { CloudStore.deleteBookmark(activeUid, b) } }; refreshLists() }
+                },
+                onDeleteCreatedPdf = { c ->
+                    scope.launch {
+                        runCatching { withContext(Dispatchers.IO) { CloudStore.deleteCreatedPdf(context, userId, c) } }
+                        refreshLists()
+                    }
                 },
                 onOpenUri = { loadPdf(it) },
                 onSendBitmapsToScanReview = { bitmaps, filter ->

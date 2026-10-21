@@ -44,9 +44,12 @@ private val ScanAccentPurple = Color(0xFF5E5CE6)
 
 /**
  * Review screen shown AFTER a scan:
- * - All Filter & Paper/DPI options are shown in a compact 2-row div (no horizontal scroll needed).
- * - Scanned page thumbnails in the middle with clean header bar & bottom controls (no text covering the scan).
- * - All 8 Export/Action tools shown in a compact 2x4 bottom div card so every option is visible at once.
+ * - CamScanner-grade image enhancement & auto-deskew (straightening crooked scans).
+ * - Ultra-light, modern PDF builder (150-250 KB/page instead of 35 MB).
+ * - Direct "Save to Google Drive" button.
+ * - All Filter & Paper/DPI options shown in a compact 2-row div (no horizontal scroll needed).
+ * - Scanned page thumbnails with clean header bar & bottom controls.
+ * - All Export/Action tools shown in a compact bottom div card.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -157,11 +160,11 @@ fun ScanExportScreen(
                             perPageOverrides = emptyMap()
                         }
                         CompactPillButton(
-                            label = "Grayscale",
-                            selected = bulkFilter == FilterType.GRAYSCALE,
+                            label = "Magic Color",
+                            selected = bulkFilter == FilterType.MAGIC,
                             modifier = Modifier.weight(1f)
                         ) {
-                            bulkFilter = FilterType.GRAYSCALE
+                            bulkFilter = FilterType.MAGIC
                             perPageOverrides = emptyMap()
                         }
                         CompactPillButton(
@@ -173,11 +176,11 @@ fun ScanExportScreen(
                             perPageOverrides = emptyMap()
                         }
                         CompactPillButton(
-                            label = "Magic",
-                            selected = bulkFilter == FilterType.MAGIC,
+                            label = "Grayscale",
+                            selected = bulkFilter == FilterType.GRAYSCALE,
                             modifier = Modifier.weight(1f)
                         ) {
-                            bulkFilter = FilterType.MAGIC
+                            bulkFilter = FilterType.GRAYSCALE
                             perPageOverrides = emptyMap()
                         }
                     }
@@ -338,7 +341,7 @@ fun ScanExportScreen(
                 }
             }
 
-            // --- 3. BOTTOM ACTION DIV (All 8 tools visible at once in a 2x4 grid, no scrolling!) ---
+            // --- 3. BOTTOM ACTION DIV (All tools visible in a clean 2-row grid, no scrolling!) ---
             Surface(
                 tonalElevation = 4.dp,
                 shadowElevation = 4.dp,
@@ -354,14 +357,14 @@ fun ScanExportScreen(
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Text(
-                        "Export & Photostat Actions",
+                        "Export & Actions",
                         fontSize = 11.sp,
                         fontWeight = FontWeight.SemiBold,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(horizontal = 4.dp)
                     )
 
-                    // Row 1: Make PDF, CNIC 2x5 Mode, Print Sheet, Save Images
+                    // Row 1: Make PDF, Save to Drive, CNIC 2x5, Print Now
                     Row(
                         Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
@@ -376,9 +379,27 @@ fun ScanExportScreen(
                             run {
                                 val out = File(context.cacheDir, "scan_${System.currentTimeMillis()}.pdf")
                                 PdfBuilder.build(pages, out, paper = selectedPaper, dpi = selectedDpi)
-                                val uri = FileExport.savePdfToDownloads(context, out, out.name)
-                                if (uri != null) "PDF (${selectedPaper.name}, $selectedDpi DPI) saved to Downloads/Master Sahib PDF"
+                                val uri = FileExport.savePdfToDownloads(
+                                    context, out, out.name, toolCategory = "Scanned PDF"
+                                )
+                                if (uri != null) "PDF (${selectedPaper.name}, ${out.length() / 1024} KB) saved to Downloads"
                                 else "PDF save failed"
+                            }
+                        }
+
+                        CompactActionTile(
+                            title = "Save to Drive",
+                            icon = Icons.Filled.CloudUpload,
+                            color = Color(0xFF1A73E8),
+                            enabled = !busy,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            run {
+                                val out = File(context.cacheDir, "scan_${System.currentTimeMillis()}.pdf")
+                                PdfBuilder.build(pages, out, paper = selectedPaper, dpi = selectedDpi)
+                                FileExport.savePdfToDownloads(context, out, out.name, toolCategory = "Google Drive PDF")
+                                DriveHelper.savePdfToDrive(context, out, out.name)
+                                "Opening Google Drive..."
                             }
                         }
 
@@ -422,7 +443,13 @@ fun ScanExportScreen(
                                 scaleMode = PrintHelper.SCALE_MODE_FIT
                             }.printBitmap("Photostat_Print", bmpToPrint)
                         }
+                    }
 
+                    // Row 2: Save Images, Collage, OCR Urdu, OCR English
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
                         CompactActionTile(
                             title = "Save Images",
                             icon = Icons.Filled.Image,
@@ -438,13 +465,7 @@ fun ScanExportScreen(
                                 "$ok image(s) saved to Gallery"
                             }
                         }
-                    }
 
-                    // Row 2: Collage, Urdu OCR, English OCR, Add Pages
-                    Row(
-                        Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
                         CompactActionTile(
                             title = "Collage",
                             icon = Icons.Filled.GridView,
@@ -493,16 +514,6 @@ fun ScanExportScreen(
                                     if (uri != null) "Text copied + saved to Downloads/Master Sahib PDF" else "Text copied to clipboard"
                                 }
                             }
-                        }
-
-                        CompactActionTile(
-                            title = "Add Pages",
-                            icon = Icons.Filled.AddAPhoto,
-                            color = Color(0xFF1E88E5),
-                            enabled = !busy,
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            onAddPages()
                         }
                     }
                 }

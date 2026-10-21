@@ -54,7 +54,7 @@ object Orientation {
     }
 
     /**
-     * Automatically detects document skew angle (-8°..+8°) using Horizontal Projection Profile
+     * Automatically detects document skew angle (-15°..+15°) using Horizontal Edge
      * variance maximization on inner text/form lines, then rotates the page onto a clean white
      * canvas so skewed text and lines become horizontal ("seedha").
      */
@@ -70,10 +70,12 @@ object Orientation {
 
     /**
      * Estimates the clockwise tilt angle (in degrees) of horizontal text/lines in [src].
+     * Uses vertical gradient edge transitions so thin form lines, text baselines,
+     * and table dividers are detected with high sensitivity regardless of background lighting.
      */
     fun estimateSkewAngle(src: Bitmap): Float {
         if (src.width < 80 || src.height < 80) return 0f
-        val targetW = 360
+        val targetW = 400
         val scale = targetW.toFloat() / src.width.toFloat()
         val w = targetW
         val h = (src.height * scale).roundToInt().coerceAtLeast(80)
@@ -82,60 +84,56 @@ object Orientation {
         small.getPixels(px, 0, w, 0, 0, w, h)
         if (small !== src) small.recycle()
 
-        // Ignore outer 8% margin so dark page borders/wedges don't bias the text line angle
+        // Ignore outer 8% margin so dark page borders/shadows don't bias the text angle
         val marginX = (w * 0.08f).toInt()
         val marginY = (h * 0.08f).toInt()
 
-        // Compute mean luminance in the interior
-        var lumSum = 0L
-        var count = 0
-        for (y in marginY until (h - marginY)) {
+        // 1. Compute luminance map
+        val lum = IntArray(w * h)
+        for (y in 0 until h) {
             val rowOff = y * w
-            for (x in marginX until (w - marginX)) {
+            for (x in 0 until w) {
                 val c = px[rowOff + x]
                 val r = (c shr 16) and 0xFF
                 val g = (c shr 8) and 0xFF
                 val b = c and 0xFF
-                lumSum += (r * 299 + g * 587 + b * 114) / 1000
-                count++
+                lum[rowOff + x] = (r * 299 + g * 587 + b * 114) / 1000
             }
         }
-        if (count == 0) return 0f
-        val thresh = ((lumSum / count) * 0.86f).toInt()
 
-        // Collect coordinates of dark foreground pixels (subsampled by 2 for speed)
-        val darkX = IntArray(count / 2 + 1)
-        val darkY = IntArray(count / 2 + 1)
-        var nDark = 0
+        // 2. Collect coordinates with significant vertical gradient (top/bottom edges of text/lines)
+        val maxPoints = (w * h) / 4
+        val edgeX = IntArray(maxPoints)
+        val edgeY = IntArray(maxPoints)
+        var nEdges = 0
         val cx = w / 2
         val cy = h / 2
-        for (y in marginY until (h - marginY) step 2) {
+
+        for (y in (marginY + 1) until (h - marginY)) {
             val rowOff = y * w
-            for (x in marginX until (w - marginX) step 2) {
-                val c = px[rowOff + x]
-                val r = (c shr 16) and 0xFF
-                val g = (c shr 8) and 0xFF
-                val b = c and 0xFF
-                val lum = (r * 299 + g * 587 + b * 114) / 1000
-                if (lum < thresh && nDark < darkX.size) {
-                    darkX[nDark] = x - cx
-                    darkY[nDark] = y - cy
-                    nDark++
+            val prevRowOff = (y - 1) * w
+            for (x in marginX until (w - marginX)) {
+                val diff = abs(lum[rowOff + x] - lum[prevRowOff + x])
+                // Strong horizontal edge (text baseline or form divider line)
+                if (diff >= 28 && nEdges < maxPoints) {
+                    edgeX[nEdges] = x - cx
+                    edgeY[nEdges] = y - cy
+                    nEdges++
                 }
             }
         }
-        if (nDark < 40) return 0f
+        if (nEdges < 40) return 0f
 
-        val hist = IntArray(h * 2)
-        val offset = h
+        val hist = IntArray(h * 3)
+        val offset = h * 3 / 2
 
         fun scoreAngle(deg: Float): Long {
             val rad = Math.toRadians(deg.toDouble())
             val sinA = sin(rad)
             val cosA = cos(rad)
             java.util.Arrays.fill(hist, 0)
-            for (i in 0 until nDark) {
-                val projY = (-darkX[i] * sinA + darkY[i] * cosA).roundToInt() + offset
+            for (i in 0 until nEdges) {
+                val projY = (-edgeX[i] * sinA + edgeY[i] * cosA).roundToInt() + offset
                 if (projY in hist.indices) {
                     hist[projY]++
                 }
@@ -148,11 +146,11 @@ object Orientation {
             return sumSq
         }
 
-        // Stage 1: Coarse search (-8.0° .. +8.0° in 0.5° steps)
+        // Stage 1: Coarse search (-15.0° .. +15.0° in 0.5° steps)
         var bestAngle = 0f
         var bestScore = -1L
-        var a = -8.0f
-        while (a <= 8.0f) {
+        var a = -15.0f
+        while (a <= 15.0f) {
             val s = scoreAngle(a)
             if (s > bestScore) {
                 bestScore = s
@@ -161,10 +159,10 @@ object Orientation {
             a += 0.5f
         }
 
-        // Stage 2: Fine search around bestAngle (-0.6° .. +0.6° in 0.1° steps)
+        // Stage 2: Fine search around bestAngle (-0.8° .. +0.8° in 0.1° steps)
         val center = bestAngle
-        var fine = center - 0.6f
-        while (fine <= center + 0.6f) {
+        var fine = center - 0.8f
+        while (fine <= center + 0.8f) {
             val s = scoreAngle(fine)
             if (s > bestScore) {
                 bestScore = s

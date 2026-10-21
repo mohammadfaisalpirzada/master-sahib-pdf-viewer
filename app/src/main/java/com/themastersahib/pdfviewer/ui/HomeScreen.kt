@@ -47,6 +47,7 @@ import com.themastersahib.pdfviewer.PdfRendererHelper
 import com.themastersahib.pdfviewer.core.*
 import com.themastersahib.pdfviewer.data.Auth
 import com.themastersahib.pdfviewer.data.Bookmark
+import com.themastersahib.pdfviewer.data.CreatedPdfRecord
 import com.themastersahib.pdfviewer.data.RecentFile
 import com.themastersahib.pdfviewer.data.SettingsStore
 import com.themastersahib.pdfviewer.data.UserProfileInfo
@@ -72,6 +73,7 @@ private data class LauncherToolItem(
 fun HomeScreen(
     recents: List<RecentFile>,
     bookmarks: List<Bookmark>,
+    createdPdfs: List<CreatedPdfRecord> = emptyList(),
     darkMode: Boolean,
     userProfile: UserProfileInfo?,
     onToggleDark: (Boolean) -> Unit,
@@ -85,6 +87,7 @@ fun HomeScreen(
     onOpenBookmark: (Bookmark) -> Unit,
     onDeleteRecent: (RecentFile) -> Unit,
     onDeleteBookmark: (Bookmark) -> Unit = {},
+    onDeleteCreatedPdf: (CreatedPdfRecord) -> Unit = {},
     onOpenUri: (Uri) -> Unit = {},
     onSendBitmapsToScanReview: (List<Bitmap>, FilterType) -> Unit = { _, _ -> }
 ) {
@@ -127,6 +130,10 @@ fun HomeScreen(
     val filteredRecents = remember(recents, searchFilter) {
         if (searchFilter.isBlank()) recents
         else recents.filter { it.name.contains(searchFilter.trim(), ignoreCase = true) }
+    }
+    val filteredCreated = remember(createdPdfs, searchFilter) {
+        if (searchFilter.isBlank()) createdPdfs
+        else createdPdfs.filter { it.name.contains(searchFilter.trim(), ignoreCase = true) }
     }
     val filteredBookmarks = remember(bookmarks, searchFilter) {
         if (searchFilter.isBlank()) bookmarks
@@ -429,6 +436,11 @@ fun HomeScreen(
                         Tab(
                             selected = homeTab == 1,
                             onClick = { homeTab = 1 },
+                            text = { Text("Created (${filteredCreated.size})") }
+                        )
+                        Tab(
+                            selected = homeTab == 2,
+                            onClick = { homeTab = 2 },
                             text = { Text("Bookmarks (${filteredBookmarks.size})") }
                         )
                     }
@@ -478,6 +490,66 @@ fun HomeScreen(
                             }
                         }
                         1 -> {
+                            if (filteredCreated.isEmpty()) {
+                                EmptyHint("No created PDFs yet. Use Scan, Photostat, Merge or CNIC Maker above to generate documents.")
+                            } else {
+                                LazyColumn(Modifier.fillMaxSize()) {
+                                    items(filteredCreated) { item ->
+                                        ListItem(
+                                            headlineContent = {
+                                                Text(item.name, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold)
+                                            },
+                                            supportingContent = {
+                                                val sizeStr = if (item.sizeBytes > 0) {
+                                                    if (item.sizeBytes < 1024 * 1024) "${item.sizeBytes / 1024} KB"
+                                                    else String.format(Locale.US, "%.1f MB", item.sizeBytes / (1024.0 * 1024.0))
+                                                } else "PDF"
+                                                val pgs = if (item.pageCount > 0) "${item.pageCount} pgs" else "Saved"
+                                                Text("${df.format(Date(item.createdAt))}  ·  $sizeStr  ·  $pgs  ·  ${item.toolUsed}")
+                                            },
+                                            leadingContent = {
+                                                Box(
+                                                    Modifier
+                                                        .size(40.dp)
+                                                        .clip(RoundedCornerShape(10.dp))
+                                                        .background(AccentPurple.copy(alpha = 0.12f)),
+                                                    contentAlignment = Alignment.Center
+                                                ) {
+                                                    Icon(
+                                                        Icons.Filled.PictureAsPdf,
+                                                        contentDescription = null,
+                                                        tint = AccentPurple
+                                                    )
+                                                }
+                                            },
+                                            trailingContent = {
+                                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                                    IconButton(onClick = {
+                                                        runCatching {
+                                                            DriveHelper.saveUriToDrive(context, Uri.parse(item.uri), item.name)
+                                                        }.onFailure {
+                                                            Toast.makeText(context, "Drive error: ${it.message}", Toast.LENGTH_SHORT).show()
+                                                        }
+                                                    }) {
+                                                        Icon(
+                                                            Icons.Filled.CloudUpload,
+                                                            contentDescription = "Save to Google Drive",
+                                                            tint = Color(0xFF1A73E8)
+                                                        )
+                                                    }
+                                                    IconButton(onClick = { onDeleteCreatedPdf(item) }) {
+                                                        Icon(Icons.Filled.Close, "Delete record")
+                                                    }
+                                                }
+                                            },
+                                            modifier = Modifier.clickableRow { onOpenUri(Uri.parse(item.uri)) }
+                                        )
+                                        HorizontalDivider()
+                                    }
+                                }
+                            }
+                        }
+                        2 -> {
                             if (filteredBookmarks.isEmpty()) {
                                 EmptyHint("No bookmarks yet. Open any PDF and tap the bookmark icon in the bottom bar.")
                             } else {
@@ -552,6 +624,7 @@ fun HomeScreen(
             userProfile = userProfile,
             avatarBitmap = avatarBitmap,
             recentsCount = recents.size,
+            createdCount = createdPdfs.size,
             bookmarksCount = bookmarks.size,
             darkMode = darkMode,
             onToggleDark = onToggleDark,
@@ -909,6 +982,7 @@ private fun UserProfileModalSheet(
     userProfile: UserProfileInfo?,
     avatarBitmap: Bitmap?,
     recentsCount: Int,
+    createdCount: Int,
     bookmarksCount: Int,
     darkMode: Boolean,
     onToggleDark: (Boolean) -> Unit,
@@ -920,6 +994,7 @@ private fun UserProfileModalSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
                 .padding(horizontal = 24.dp)
                 .padding(bottom = 32.dp),
             horizontalAlignment = Alignment.CenterHorizontally
@@ -970,32 +1045,65 @@ private fun UserProfileModalSheet(
                     )
                 }
 
-                Spacer(Modifier.height(10.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    AssistChip(
-                        onClick = {},
-                        leadingIcon = {
+                Spacer(Modifier.height(12.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Surface(
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(20.dp),
+                        color = Color(0xFF2E7D32).copy(alpha = 0.12f)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center
+                        ) {
                             Icon(
                                 Icons.Filled.VerifiedUser,
                                 contentDescription = null,
                                 modifier = Modifier.size(16.dp),
                                 tint = Color(0xFF2E7D32)
                             )
-                        },
-                        label = { Text("Signed in via ${userProfile.providerName}") }
-                    )
-                    AssistChip(
-                        onClick = {},
-                        leadingIcon = {
+                            Spacer(Modifier.width(6.dp))
+                            Text(
+                                text = userProfile.providerName,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = Color(0xFF2E7D32),
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+                    Surface(
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(20.dp),
+                        color = AccentPurple.copy(alpha = 0.12f)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center
+                        ) {
                             Icon(
                                 Icons.Filled.CloudDone,
                                 contentDescription = null,
                                 modifier = Modifier.size(16.dp),
                                 tint = AccentPurple
                             )
-                        },
-                        label = { Text("Cloud Sync On") }
-                    )
+                            Spacer(Modifier.width(6.dp))
+                            Text(
+                                text = "Cloud Sync On",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = AccentPurple,
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
                 }
 
                 Spacer(Modifier.height(16.dp))
@@ -1007,7 +1115,7 @@ private fun UserProfileModalSheet(
                     Row(
                         Modifier
                             .fillMaxWidth()
-                            .padding(vertical = 14.dp, horizontal = 16.dp),
+                            .padding(vertical = 14.dp, horizontal = 12.dp),
                         horizontalArrangement = Arrangement.SpaceEvenly
                     ) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -1018,6 +1126,25 @@ private fun UserProfileModalSheet(
                             )
                             Text(
                                 "Recent PDFs",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Box(
+                            Modifier
+                                .width(1.dp)
+                                .height(36.dp)
+                                .background(MaterialTheme.colorScheme.outlineVariant)
+                        )
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(
+                                "$createdCount",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = AccentPurple
+                            )
+                            Text(
+                                "Created PDFs",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
