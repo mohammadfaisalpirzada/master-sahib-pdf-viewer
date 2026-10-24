@@ -1,0 +1,11 @@
+{
+  "title": "PDF Reader - Master Sahib",
+  "category": "Utilities",
+  "caption": "Fast, clean document scanner and PDF reader for books, notes, and CNIC cards.",
+  "icon": "BookOpen",
+  "features": [
+    "Smart document scanner with auto-deskew and B&W enhancement",
+    "Single and double sided CNIC card maker",
+    "Smooth offline PDF reading and page jump"
+  ]
+}
