@@ -111,8 +111,8 @@ object ImageFilters {
 
         // 3. Normalize pixels and apply smooth contrast curve
         val out = IntArray(w * h)
-        val borderX = (w * 0.015f).toInt().coerceAtLeast(3)
-        val borderY = (h * 0.015f).toInt().coerceAtLeast(3)
+        val borderX = (w * 0.004f).toInt().coerceAtLeast(2)
+        val borderY = (h * 0.004f).toInt().coerceAtLeast(2)
 
         for (y in 0 until h) {
             val row = y * w
@@ -197,8 +197,8 @@ object ImageFilters {
         }
 
         val out = IntArray(w * h)
-        val borderX = (w * 0.015f).toInt().coerceAtLeast(3)
-        val borderY = (h * 0.015f).toInt().coerceAtLeast(3)
+        val borderX = (w * 0.004f).toInt().coerceAtLeast(2)
+        val borderY = (h * 0.004f).toInt().coerceAtLeast(2)
 
         for (y in 0 until h) {
             val row = y * w

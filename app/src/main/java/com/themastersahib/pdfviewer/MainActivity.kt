@@ -234,7 +234,7 @@ fun AppRoot(incomingPdf: Uri?) {
             val scan = GmsDocumentScanningResult.fromActivityResultIntent(result.data)
             val uris = scan?.pages?.mapNotNull { it.imageUri } ?: emptyList()
             scope.launch {
-                val decoded = withContext(Dispatchers.IO) { uris.mapNotNull { BitmapIO.decode(context, it) } }
+                val decoded = withContext(Dispatchers.IO) { uris.mapNotNull { BitmapIO.decode(context, it, autoStraighten = false) } }
                 scannedPages = if (screen == Screen.SCAN_REVIEW) scannedPages + decoded else decoded
                 if (scannedPages.isNotEmpty()) screen = Screen.SCAN_REVIEW
             }
@@ -246,10 +246,7 @@ fun AppRoot(incomingPdf: Uri?) {
         val options = GmsDocumentScannerOptions.Builder()
             .setGalleryImportAllowed(true)
             .setPageLimit(50)
-            .setResultFormats(
-                GmsDocumentScannerOptions.RESULT_FORMAT_JPEG,
-                GmsDocumentScannerOptions.RESULT_FORMAT_PDF
-            )
+            .setResultFormats(GmsDocumentScannerOptions.RESULT_FORMAT_JPEG)
             .setScannerMode(GmsDocumentScannerOptions.SCANNER_MODE_FULL)
             .build()
         GmsDocumentScanning.getClient(options)

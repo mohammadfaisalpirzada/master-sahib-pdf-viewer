@@ -42,11 +42,18 @@ object Orientation {
             val m = Matrix().apply { postRotate(norm) }
             return Bitmap.createBitmap(src, 0, 0, src.width, src.height, m, true)
         }
-        val out = Bitmap.createBitmap(src.width, src.height, Bitmap.Config.ARGB_8888)
+        // Expand the canvas to the rotated bounding box so NO content corner is ever cut off.
+        val rad = Math.toRadians(degrees.toDouble())
+        val c = abs(cos(rad)); val s = abs(sin(rad))
+        val outW = (src.width * c + src.height * s).roundToInt()
+        val outH = (src.width * s + src.height * c).roundToInt()
+        val out = Bitmap.createBitmap(outW, outH, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(out)
         canvas.drawColor(Color.WHITE)
         val m = Matrix().apply {
-            postRotate(degrees, src.width / 2f, src.height / 2f)
+            postTranslate(-src.width / 2f, -src.height / 2f)
+            postRotate(degrees)
+            postTranslate(outW / 2f, outH / 2f)
         }
         val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
         canvas.drawBitmap(src, m, paint)
@@ -60,12 +67,9 @@ object Orientation {
      */
     fun autoDeskew(src: Bitmap): Bitmap {
         val angle = estimateSkewAngle(src)
-        val cleaned = cleanOuterBorderWedges(src)
-        return if (abs(angle) >= 0.25f) {
-            rotate(cleaned, -angle)
-        } else {
-            cleaned
-        }
+        // Only rotate when the tilt is real (>= 0.5°) and plausible (<= 10°).
+        // Never erase borders here — that used to delete real content near page edges.
+        return if (abs(angle) in 0.5f..10f) rotate(src, -angle) else src
     }
 
     /**
@@ -171,6 +175,10 @@ object Orientation {
             fine += 0.1f
         }
 
+        // Confidence gate: rotate only if the best angle is clearly better than "no rotation".
+        // Pages with photos / tables / handwriting give noisy scores -> keep them untouched.
+        val zeroScore = scoreAngle(0f)
+        if (zeroScore <= 0L || bestScore < zeroScore * 1.25) return 0f
         return bestAngle
     }
 
@@ -185,40 +193,41 @@ object Orientation {
         val px = IntArray(w * h)
         src.getPixels(px, 0, w, 0, 0, w, h)
 
-        val maxBorderX = (w * 0.035f).toInt().coerceAtLeast(4)
-        val maxBorderY = (h * 0.035f).toInt().coerceAtLeast(4)
+        val maxBorderX = (w * 0.02f).toInt().coerceAtLeast(4)
+        val maxBorderY = (h * 0.02f).toInt().coerceAtLeast(4)
 
-        fun isDarkOrTransparent(c: Int): Boolean {
+        // Only near-black, low-saturation pixels count as scanner background.
+        // Coloured headers, stamps, blue/red ink, photos are NOT touched.
+        fun isBackground(c: Int): Boolean {
             val alpha = (c ushr 24) and 0xFF
             if (alpha < 128) return true
             val r = (c shr 16) and 0xFF
             val g = (c shr 8) and 0xFF
             val b = c and 0xFF
+            val mx = maxOf(r, g, b); val mn = minOf(r, g, b)
             val lum = (r * 299 + g * 587 + b * 114) / 1000
-            return lum < 155
+            return lum < 95 && (mx - mn) < 40
         }
 
-        // Clean left & right edges on each row
+        // Whiten a run from the edge only if it STOPS before the band limit.
+        // A run that fills the whole band is real content (dark header bar, border line, photo).
+        fun cleanRun(indices: IntProgression) {
+            var n = 0
+            for (i in indices) { if (isBackground(px[i])) n++ else break }
+            if (n in 1 until indices.count()) {
+                var k = 0
+                for (i in indices) { if (k >= n) break; px[i] = Color.WHITE; k++ }
+            }
+        }
+
         for (y in 0 until h) {
             val row = y * w
-            for (x in 0 until maxBorderX) {
-                if (isDarkOrTransparent(px[row + x])) px[row + x] = Color.WHITE else break
-            }
-            for (x in (w - 1) downTo (w - maxBorderX)) {
-                if (isDarkOrTransparent(px[row + x])) px[row + x] = Color.WHITE else break
-            }
+            cleanRun(row until row + maxBorderX)
+            cleanRun((row + w - 1) downTo (row + w - maxBorderX))
         }
-
-        // Clean top & bottom edges on each column
         for (x in 0 until w) {
-            for (y in 0 until maxBorderY) {
-                val idx = y * w + x
-                if (isDarkOrTransparent(px[idx])) px[idx] = Color.WHITE else break
-            }
-            for (y in (h - 1) downTo (h - maxBorderY)) {
-                val idx = y * w + x
-                if (isDarkOrTransparent(px[idx])) px[idx] = Color.WHITE else break
-            }
+            cleanRun(IntProgression.fromClosedRange(x, x + (maxBorderY - 1) * w, w))
+            cleanRun(IntProgression.fromClosedRange(x + (h - 1) * w, x + (h - maxBorderY) * w, -w))
         }
 
         val out = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
