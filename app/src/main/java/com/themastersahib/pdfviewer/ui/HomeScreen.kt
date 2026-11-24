@@ -81,6 +81,7 @@ fun HomeScreen(
     onRequestLogin: () -> Unit,
     onPickPdf: () -> Unit,
     onScan: () -> Unit,
+    onBatchScan: () -> Unit = {},
     onReadyPhotostat: () -> Unit,
     onMerge: () -> Unit,
     onOpenRecent: (RecentFile) -> Unit,
@@ -360,6 +361,9 @@ fun HomeScreen(
                             },
                             LauncherToolItem("Scan Doc", Icons.Filled.DocumentScanner, Color(0xFF1E88E5)) {
                                 onScan()
+                            },
+                            LauncherToolItem("Batch Scan", Icons.Filled.BurstMode, Color(0xFF3949AB)) {
+                                onBatchScan()
                             },
                             LauncherToolItem("Ready Photostat", Icons.Filled.Print, Color(0xFF00897B)) {
                                 pendingToolAction = "ASK_PHOTOSTAT_SOURCE"

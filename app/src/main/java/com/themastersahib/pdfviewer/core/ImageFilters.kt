@@ -28,6 +28,39 @@ object ImageFilters {
         FilterType.BW_PRINT -> applyBwPhotostat(src)
     }
 
+    /**
+     * SMART SUGGEST: look at the page and pick the best filter automatically.
+     * - Mostly photo / heavy colour  -> NONE (keep as is)
+     * - Some colour (stamps, signatures, coloured headers) -> MAGIC
+     * - Plain text / forms -> BW_PRINT (best for photostat)
+     */
+    fun suggest(src: Bitmap): FilterType {
+        val tw = 160
+        val th = (src.height * tw.toFloat() / src.width).roundToInt().coerceAtLeast(1)
+        val small = Bitmap.createScaledBitmap(src, tw, th, true)
+        val px = IntArray(tw * th)
+        small.getPixels(px, 0, tw, 0, 0, tw, th)
+        if (small !== src) small.recycle()
+        var colored = 0
+        var midTone = 0
+        for (c in px) {
+            val r = (c shr 16) and 0xFF
+            val g = (c shr 8) and 0xFF
+            val b = c and 0xFF
+            val mx = max(r, max(g, b)); val mn = min(r, min(g, b))
+            val lum = (r * 299 + g * 587 + b * 114) / 1000
+            if (mx - mn > 55 && lum in 35..235) colored++
+            if (lum in 70..180) midTone++
+        }
+        val colorFrac = colored.toFloat() / px.size
+        val midFrac = midTone.toFloat() / px.size
+        return when {
+            colorFrac > 0.30f || midFrac > 0.55f -> FilterType.NONE
+            colorFrac > 0.015f -> FilterType.MAGIC
+            else -> FilterType.BW_PRINT
+        }
+    }
+
     /** BULK: apply the same filter to a whole scan session. */
     fun applyAll(pages: List<Bitmap>, type: FilterType): List<Bitmap> =
         if (type == FilterType.NONE) pages else pages.map { apply(it, type) }

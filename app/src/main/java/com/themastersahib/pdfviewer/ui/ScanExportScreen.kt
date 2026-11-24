@@ -60,15 +60,17 @@ fun ScanExportScreen(
     onRotatePage: (Int) -> Unit = {},
     onFineRotatePage: (Int, Float) -> Unit = { _, _ -> },
     onAutoStraightenAll: () -> Unit = {},
+    onRotateAll: (Float) -> Unit = {},
     onDeletePage: (Int) -> Unit = {},
     onMovePage: (Int, Int) -> Unit = { _, _ -> },
-    initialFilter: FilterType = FilterType.NONE
+    initialFilter: FilterType = FilterType.NONE,
+    initialPerPageFilters: Map<Int, FilterType> = emptyMap()
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
     var bulkFilter by remember(initialFilter) { mutableStateOf(initialFilter) }
-    var perPageOverrides by remember { mutableStateOf<Map<Int, FilterType>>(emptyMap()) }
+    var perPageOverrides by remember(initialPerPageFilters) { mutableStateOf(initialPerPageFilters) }
     var selectedPaper by remember { mutableStateOf(PaperSize.A4) }
     var selectedDpi by remember { mutableIntStateOf(200) }
 
@@ -222,6 +224,29 @@ fun ScanExportScreen(
             }
 
             // --- 2. SCANNED PAGE THUMBNAILS (Clean cards, no giant text overlapping image) ---
+            // --- APPLY TO ALL: one tap for every page ---
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("All pages:", fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                CompactPillButton(label = "Smart", selected = false, modifier = Modifier.weight(1f)) {
+                    busy = true
+                    scope.launch {
+                        val m = withContext(Dispatchers.Default) {
+                            rawPages.mapIndexed { i, b -> i to ImageFilters.suggest(b) }.toMap()
+                        }
+                        perPageOverrides = m
+                        busy = false
+                        toast("Smart filter applied to all pages")
+                    }
+                }
+                CompactPillButton(label = "-1°", selected = false, modifier = Modifier.weight(1f)) { onRotateAll(-1f) }
+                CompactPillButton(label = "+1°", selected = false, modifier = Modifier.weight(1f)) { onRotateAll(1f) }
+                CompactPillButton(label = "↻ 90°", selected = false, modifier = Modifier.weight(1f)) { onRotateAll(90f) }
+            }
+
             LazyVerticalGrid(
                 columns = GridCells.Fixed(2),
                 modifier = Modifier
@@ -258,13 +283,29 @@ fun ScanExportScreen(
                                     fontWeight = FontWeight.SemiBold,
                                     maxLines = 1
                                 )
-                                Text(
-                                    text = currentPageFilter.name,
-                                    fontSize = 10.sp,
-                                    color = ScanAccentPurple,
-                                    fontWeight = FontWeight.Medium,
-                                    maxLines = 1
-                                )
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        text = currentPageFilter.name,
+                                        fontSize = 10.sp,
+                                        color = ScanAccentPurple,
+                                        fontWeight = FontWeight.Medium,
+                                        maxLines = 1
+                                    )
+                                    Text(
+                                        text = " · All",
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(6.dp))
+                                            .clickable {
+                                                bulkFilter = currentPageFilter
+                                                perPageOverrides = emptyMap()
+                                                toast("${currentPageFilter.name} applied to all pages")
+                                            }
+                                            .padding(horizontal = 4.dp, vertical = 2.dp)
+                                    )
+                                }
                             }
 
                             // Scanned Bitmap preview

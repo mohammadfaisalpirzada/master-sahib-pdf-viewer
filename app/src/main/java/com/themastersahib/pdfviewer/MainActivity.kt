@@ -21,6 +21,7 @@ import com.google.mlkit.vision.documentscanner.GmsDocumentScanning
 import com.google.mlkit.vision.documentscanner.GmsDocumentScanningResult
 import com.themastersahib.pdfviewer.core.BitmapIO
 import com.themastersahib.pdfviewer.core.FilterType
+import com.themastersahib.pdfviewer.core.ImageFilters
 import com.themastersahib.pdfviewer.core.Orientation
 import com.themastersahib.pdfviewer.core.PdfTools
 import com.themastersahib.pdfviewer.core.UpdateChecker
@@ -39,6 +40,8 @@ import com.themastersahib.pdfviewer.ui.LoginScreen
 import com.themastersahib.pdfviewer.ui.ReaderScreen
 import com.themastersahib.pdfviewer.ui.ScanExportScreen
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -120,6 +123,15 @@ fun AppRoot(incomingPdf: Uri?) {
     var createdPdfs by remember { mutableStateOf<List<CreatedPdfRecord>>(emptyList()) }
     var scannedPages by remember { mutableStateOf<List<Bitmap>>(emptyList()) }
     var scanInitialFilter by remember { mutableStateOf(FilterType.NONE) }
+    var scanPerPageFilters by remember { mutableStateOf<Map<Int, FilterType>>(emptyMap()) }
+
+    // --- BATCH MODE: scan -> auto filter -> auto save -> straight back to camera ---
+    var batchActive by remember { mutableStateOf(false) }
+    var batchPages by remember { mutableStateOf<List<Bitmap>>(emptyList()) }
+    var batchFilters by remember { mutableStateOf<Map<Int, FilterType>>(emptyMap()) }
+    var batchSession by remember { mutableLongStateOf(0L) }
+    var batchCounter by remember { mutableIntStateOf(0) }
+    val batchLock = remember { Mutex() }   // keeps pages in capture order
     var annotPage by remember { mutableStateOf<Bitmap?>(null) }
     var annotSourcePage by remember { mutableIntStateOf(0) }
     var pendingMergeUris by remember { mutableStateOf<List<Uri>>(emptyList()) }
@@ -241,8 +253,88 @@ fun AppRoot(incomingPdf: Uri?) {
         }
     }
 
+    // Batch scanner: no gallery, 1 page per round, minimal editing UI so the user
+    // returns to the camera as fast as possible. ML Kit's camera auto-captures when a
+    // page is steady, and its shutter button lets the user capture manually.
+    lateinit var launchBatchRound: () -> Unit
+
+    fun finishBatch() {
+        batchActive = false
+        scope.launch {
+            batchLock.withLock { }   // wait for the last page to finish saving
+            if (batchPages.isNotEmpty()) {
+                scannedPages = batchPages
+                scanPerPageFilters = batchFilters
+                scanInitialFilter = FilterType.NONE
+                Toast.makeText(context, "Batch done: ${batchPages.size} page(s) saved to Gallery", Toast.LENGTH_LONG).show()
+                screen = Screen.SCAN_REVIEW
+            }
+        }
+    }
+
+    val batchLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartIntentSenderForResult()
+    ) { result ->
+        if (result.resultCode != Activity.RESULT_OK) {
+            finishBatch()   // user pressed Back / closed camera -> batch ends
+            return@rememberLauncherForActivityResult
+        }
+        val uri = GmsDocumentScanningResult.fromActivityResultIntent(result.data)
+            ?.pages?.firstOrNull()?.imageUri
+        if (uri == null) { launchBatchRound(); return@rememberLauncherForActivityResult }
+        // Re-open the camera immediately; processing + saving runs in the background.
+        launchBatchRound()
+        batchCounter += 1
+        val pageNo = batchCounter
+        val session = batchSession
+        scope.launch {
+          batchLock.withLock {
+            val done = withContext(Dispatchers.IO) {
+                runCatching {
+                    val raw = BitmapIO.decode(context, uri, autoStraighten = false) ?: return@runCatching null
+                    val f = ImageFilters.suggest(raw)
+                    val out = ImageFilters.apply(raw, f)
+                    ImageSaver.saveToGallery(context, out, "Batch_${session}_p$pageNo", quality = 92)
+                    raw to f
+                }.getOrNull()
+            }
+            if (done != null) {
+                batchFilters = batchFilters + (batchPages.size to done.second)
+                batchPages = batchPages + done.first
+            }
+          }
+        }
+    }
+
+    launchBatchRound = {
+        val options = GmsDocumentScannerOptions.Builder()
+            .setGalleryImportAllowed(false)
+            .setPageLimit(1)
+            .setResultFormats(GmsDocumentScannerOptions.RESULT_FORMAT_JPEG)
+            .setScannerMode(GmsDocumentScannerOptions.SCANNER_MODE_BASE)
+            .build()
+        GmsDocumentScanning.getClient(options)
+            .getStartScanIntent(context as Activity)
+            .addOnSuccessListener { sender -> batchLauncher.launch(IntentSenderRequest.Builder(sender).build()) }
+            .addOnFailureListener {
+                Toast.makeText(context, "Scanner unavailable: ${it.message}", Toast.LENGTH_LONG).show()
+                finishBatch()
+            }
+    }
+
+    fun startBatch() {
+        batchPages = emptyList()
+        batchFilters = emptyMap()
+        batchSession = System.currentTimeMillis()
+        batchCounter = 0
+        batchActive = true
+        Toast.makeText(context, "Batch mode: scan pages one after another. Press Back to finish.", Toast.LENGTH_LONG).show()
+        launchBatchRound()
+    }
+
     fun launchScanner(defaultFilter: FilterType = FilterType.NONE) {
         scanInitialFilter = defaultFilter
+        scanPerPageFilters = emptyMap()
         val options = GmsDocumentScannerOptions.Builder()
             .setGalleryImportAllowed(true)
             .setPageLimit(50)
@@ -314,6 +406,7 @@ fun AppRoot(incomingPdf: Uri?) {
                 onRequestLogin = { showLoginScreen = true },
                 onPickPdf = { openPdf.launch(arrayOf("application/pdf")) },
                 onScan = { launchScanner(FilterType.NONE) },
+                onBatchScan = { startBatch() },
                 onReadyPhotostat = { launchScanner(FilterType.BW_PRINT) },
                 onMerge = { mergePdfs.launch(arrayOf("application/pdf")) },
                 onOpenRecent = { loadPdf(Uri.parse(it.uri), it.lastPage) },
@@ -350,6 +443,13 @@ fun AppRoot(incomingPdf: Uri?) {
                 onFineRotatePage = { i, deg ->
                     scannedPages = scannedPages.toMutableList().also { it[i] = Orientation.rotate(it[i], deg) }
                 },
+                onRotateAll = { deg ->
+                    scope.launch {
+                        scannedPages = withContext(Dispatchers.Default) {
+                            scannedPages.map { Orientation.rotate(it, deg) }
+                        }
+                    }
+                },
                 onAutoStraightenAll = {
                     scope.launch {
                         val straightened = withContext(Dispatchers.IO) {
@@ -371,7 +471,8 @@ fun AppRoot(incomingPdf: Uri?) {
                         }
                     }
                 },
-                initialFilter = scanInitialFilter
+                initialFilter = scanInitialFilter,
+                initialPerPageFilters = scanPerPageFilters
             )
 
             Screen.ANNOTATE -> {
